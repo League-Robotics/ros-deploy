@@ -1,0 +1,58 @@
+---
+# roles/ros/tasks/install_noetic.yml
+# Installs ROS 1 Noetic on Ubuntu 20.04 (amd64 or arm64).
+
+- name: Assert Ubuntu 20.04 (Focal) for ROS Noetic
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version('20.04', '==')
+    fail_msg: >
+      ROS Noetic requires Ubuntu 20.04 (Focal).
+      Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+- name: Add ROS Noetic apt key
+  ansible.builtin.apt_key:
+    url: https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc
+    state: present
+
+- name: Add ROS Noetic apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb http://packages.ros.org/ros/ubuntu
+      {{ ansible_distribution_release }} main
+    filename: ros-latest
+    state: present
+
+- name: Update apt cache after adding ROS repository
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install ROS Noetic package
+  ansible.builtin.apt:
+    name: "ros-noetic-{{ ros_package_variant }}"
+    state: present
+  notify: Source ROS environment
+
+- name: Install rosdep and build tools
+  ansible.builtin.apt:
+    name:
+      - python3-rosdep
+      - python3-rosinstall
+      - python3-rosinstall-generator
+      - python3-wstool
+      - build-essential
+      - python3-catkin-tools
+    state: present
+
+- name: Initialise rosdep (skip if already done)
+  ansible.builtin.command: rosdep init
+  args:
+    creates: /etc/ros/rosdep/sources.list.d/20-default.list
+  register: ros_rosdep_init
+  changed_when: ros_rosdep_init.rc == 0
+
+- name: Update rosdep for the ansible user
+  ansible.builtin.command: rosdep update
+  become: false
+  changed_when: true

@@ -1,0 +1,20 @@
+---
+# playbooks/xwindows.yml
+# Configure X11 forwarding so remote GUI apps appear on your local display.
+#
+# Usage:
+#   ansible-playbook playbooks/xwindows.yml
+#   ansible-playbook playbooks/xwindows.yml -e xwindows_install_xvfb=true
+#
+# On your LOCAL machine (the one with the display) you need to run:
+#   ssh -X user@remote-host          # basic X forwarding
+#   ssh -Y user@remote-host          # trusted X forwarding (needed for some ROS GUIs)
+#
+# Then test with:
+#   xclock &   or   xeyes &
+
+- name: Configure X Windows forwarding on remote hosts
+  hosts: ros_nodes
+  become: true
+  roles:
+    - xwindows

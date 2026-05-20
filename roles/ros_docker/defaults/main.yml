@@ -1,0 +1,19 @@
+---
+# roles/ros_docker/defaults/main.yml
+
+# Directory on the remote host where docker-compose files are placed.
+ros_docker_dir: /opt/ros-docker
+
+# ros_version is inherited from inventory/group_vars/all.yml (noetic | humble).
+# Override per-host in inventory/host_vars/<hostname>.yml if needed.
+
+# Override the image; leave empty to use the computed default.
+ros_docker_image: ""
+
+# Service name in docker-compose
+ros_docker_service_name: ros
+
+# Whether to start the container as a systemd service
+ros_docker_systemd_service: true
+
+# ros_master_uri and ros_node_ip are inherited from group_vars.

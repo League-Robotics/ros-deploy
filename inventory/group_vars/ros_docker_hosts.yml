@@ -1,0 +1,5 @@
+# group_vars/ros_docker_hosts.yml
+# Variables for hosts that run ROS inside Docker containers.
+
+install_docker: true
+ros_in_docker: true

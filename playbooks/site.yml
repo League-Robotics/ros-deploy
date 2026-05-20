@@ -1,0 +1,30 @@
+---
+# playbooks/site.yml
+# Master playbook — applies all roles to all groups.
+# Run: ansible-playbook playbooks/site.yml
+
+- name: Apply common baseline to every managed host
+  hosts: ros_nodes
+  become: true
+  roles:
+    - common
+
+- name: Install ROS on physical/VM nodes
+  hosts: ros_master:ros_workers
+  become: true
+  roles:
+    - ros
+
+- name: Configure X Windows forwarding
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: xwindows
+      when: configure_xwindows | default(false)
+
+- name: Install Docker and deploy ROS containers
+  hosts: ros_docker_hosts
+  become: true
+  roles:
+    - docker
+    - ros_docker

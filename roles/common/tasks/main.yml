@@ -1,0 +1,46 @@
+---
+# roles/common/tasks/main.yml
+# Baseline packages and system settings applied to every managed host.
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - wget
+      - git
+      - vim
+      - tmux
+      - htop
+      - net-tools
+      - iputils-ping
+      - dnsutils
+      - python3
+      - python3-pip
+      - python3-venv
+      - software-properties-common
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Set timezone to UTC
+  community.general.timezone:
+    name: "{{ system_timezone | default('UTC') }}"
+  notify: Restart cron
+
+- name: Ensure /etc/hosts has an entry for every ROS node
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: "^{{ hostvars[item]['ansible_host'] }}\\s"
+    line: "{{ hostvars[item]['ansible_host'] }}  {{ item }}"
+    state: present
+  loop: "{{ groups['ros_nodes'] | default([]) }}"
+  when: hostvars[item]['ansible_host'] is defined

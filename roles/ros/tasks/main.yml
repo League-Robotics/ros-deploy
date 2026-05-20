@@ -1,0 +1,26 @@
+---
+# roles/ros/tasks/main.yml
+# Entry point: delegates to the version-specific task file.
+
+- name: Validate ros_version
+  ansible.builtin.assert:
+    that:
+      - ros_version in ['noetic', 'humble']
+    fail_msg: "ros_version must be 'noetic' or 'humble', got: {{ ros_version }}"
+
+- name: Include ROS Noetic installation tasks
+  ansible.builtin.include_tasks: install_noetic.yml
+  when: ros_version == 'noetic'
+
+- name: Include ROS 2 Humble installation tasks
+  ansible.builtin.include_tasks: install_humble.yml
+  when: ros_version == 'humble'
+
+- name: Deploy ROS environment variables profile script
+  ansible.builtin.template:
+    src: ros_env.sh.j2
+    dest: "{{ ros_env_profile_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Source ROS environment

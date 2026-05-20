@@ -1,0 +1,16 @@
+---
+# roles/ros/defaults/main.yml
+
+ros_version: noetic          # noetic | humble
+ros_package_variant: ros-base  # ros-base | ros-desktop (noetic)
+                               # ros-base | ros-desktop (humble)
+
+ros_master_port: 11311
+ros_domain_id: 42
+
+# Resolved at runtime from group_vars/all.yml; keep defaults harmless.
+ros_master_uri: "http://localhost:{{ ros_master_port }}"
+ros_node_ip: "{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
+
+# Path where the ROS environment shell snippet is installed.
+ros_env_profile_path: /etc/profile.d/ros_env.sh

@@ -1,0 +1,33 @@
+# docker-compose.yml — managed by Ansible on {{ inventory_hostname }}
+# Do not edit by hand.
+version: "3.8"
+
+services:
+  {{ ros_docker_service_name }}:
+    image: "{{ _ros_docker_image }}"
+    restart: unless-stopped
+    env_file:
+      - ros.env
+    # ------------------------------------------------------------------
+    # host network mode: the container shares the host's network stack.
+    # This is the simplest way to let the containerised ROS node join
+    # the same multicast/broadcast domain as every other physical or
+    # virtual machine on the LAN, satisfying the requirement that all
+    # nodes can find each other regardless of deployment type.
+    #
+    # On Linux this works out of the box.
+    # On macOS / Windows Docker Desktop, host networking is NOT supported
+    # natively; use the macvlan workaround in docker/README.md instead.
+    # ------------------------------------------------------------------
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      # Mount the host workspace if it exists so you can share packages.
+      - "{{ ros_docker_dir }}/workspace:/root/workspace:rw"
+    # Keep the container alive so you can docker exec into it.
+    command: >
+      bash -c "source /opt/ros/{{ ros_version }}/setup.bash &&
+               tail -f /dev/null"
+    # Grant access to host devices (cameras, serial ports, etc.)
+    privileged: false
+    devices: []
