@@ -1,0 +1,78 @@
+---
+# roles/docker/tasks/main.yml
+# Install Docker CE from the official Docker apt repository.
+# Works on Ubuntu amd64 and arm64 (Raspberry Pi 4 + 5).
+
+- name: Remove any OS-provided Docker packages
+  ansible.builtin.apt:
+    name:
+      - docker
+      - docker-engine
+      - docker.io
+      - containerd
+      - runc
+    state: absent
+  ignore_errors: true   # packages may not be present
+
+- name: Add Docker apt key
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    keyring: /usr/share/keyrings/docker-archive-keyring.gpg
+    state: present
+
+- name: Add Docker apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ docker_deb_arch }} signed-by=/usr/share/keyrings/docker-archive-keyring.gpg]
+      https://download.docker.com/linux/ubuntu
+      {{ ansible_distribution_release }} {{ docker_channel }}
+    filename: docker
+    state: present
+  vars:
+    docker_deb_arch: >-
+      {{ 'arm64' if ansible_architecture == 'aarch64' else
+         'armhf' if ansible_architecture == 'armv7l' else
+         'amd64' }}
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install Docker CE and CLI
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  notify: Start Docker
+
+- name: Enable and start Docker service
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Add users to the docker group
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: docker
+    append: true
+  loop: "{{ docker_users }}"
+  notify: Inform docker group membership change
+
+# ── Enable multi-architecture image support (for Mac arm64 emulation) ──
+- name: Install QEMU binfmt support for multi-arch containers
+  ansible.builtin.apt:
+    name:
+      - qemu-user-static
+      - binfmt-support
+    state: present
+  when: ansible_architecture in ['x86_64', 'aarch64']
+
+- name: Register QEMU binfmt handlers
+  ansible.builtin.command: update-binfmts --enable
+  changed_when: false
+  when: ansible_architecture in ['x86_64', 'aarch64']

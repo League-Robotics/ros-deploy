@@ -1,0 +1,68 @@
+---
+# roles/ros/tasks/install_humble.yml
+# Installs ROS 2 Humble Hawksbill on Ubuntu 22.04 (amd64 or arm64).
+
+- name: Assert Ubuntu 22.04 (Jammy) for ROS 2 Humble
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version('22.04', '==')
+    fail_msg: >
+      ROS 2 Humble requires Ubuntu 22.04 (Jammy).
+      Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+- name: Ensure universe repository is enabled
+  ansible.builtin.apt_repository:
+    repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+    state: present
+
+- name: Add ROS 2 apt key
+  ansible.builtin.apt_key:
+    url: https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc
+    keyring: /usr/share/keyrings/ros-archive-keyring.gpg
+    state: present
+
+- name: Add ROS 2 Humble apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch={{ ros_deb_arch }} signed-by=/usr/share/keyrings/ros-archive-keyring.gpg]
+      http://packages.ros.org/ros2/ubuntu
+      {{ ansible_distribution_release }} main
+    filename: ros2
+    state: present
+  vars:
+    ros_deb_arch: >-
+      {{ 'arm64' if ansible_architecture == 'aarch64' else
+         'armhf' if ansible_architecture == 'armv7l' else
+         'amd64' }}
+
+- name: Update apt cache after adding ROS 2 repository
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install ROS 2 Humble package
+  ansible.builtin.apt:
+    name: "ros-humble-{{ ros_package_variant }}"
+    state: present
+  notify: Source ROS environment
+
+- name: Install colcon, rosdep, and build tools
+  ansible.builtin.apt:
+    name:
+      - python3-colcon-common-extensions
+      - python3-rosdep
+      - python3-vcstool
+      - build-essential
+    state: present
+
+- name: Initialise rosdep (skip if already done)
+  ansible.builtin.command: rosdep init
+  args:
+    creates: /etc/ros/rosdep/sources.list.d/20-default.list
+  register: ros_rosdep_init
+  changed_when: ros_rosdep_init.rc == 0
+
+- name: Update rosdep for the ansible user
+  ansible.builtin.command: rosdep update
+  become: false
+  changed_when: true

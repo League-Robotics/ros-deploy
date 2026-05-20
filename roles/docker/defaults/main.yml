@@ -1,0 +1,12 @@
+---
+# roles/docker/defaults/main.yml
+
+# Docker apt repository channel: stable | test | nightly
+docker_channel: stable
+
+# Docker Compose version installed via pip (leave empty to skip)
+docker_compose_pip_version: ""
+
+# Users to add to the docker group (defaults to the ansible remote user)
+docker_users:
+  - "{{ ansible_user }}"

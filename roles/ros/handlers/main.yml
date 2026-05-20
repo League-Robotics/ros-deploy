@@ -1,0 +1,9 @@
+---
+# roles/ros/handlers/main.yml
+
+- name: Source ROS environment
+  ansible.builtin.debug:
+    msg: >
+      ROS environment profile updated.
+      New login shells on {{ inventory_hostname }} will automatically
+      source /opt/ros/{{ ros_version }}/setup.bash.

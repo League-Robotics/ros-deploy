@@ -1,0 +1,14 @@
+---
+# roles/docker/handlers/main.yml
+
+- name: Start Docker
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Inform docker group membership change
+  ansible.builtin.debug:
+    msg: >
+      Users added to the 'docker' group on {{ inventory_hostname }}.
+      They must log out and back in for group membership to take effect.

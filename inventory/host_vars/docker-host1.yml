@@ -1,0 +1,8 @@
+# inventory/host_vars/docker-host1.yml
+# Per-host overrides for a machine that will run ROS inside Docker.
+
+install_docker: true
+ros_in_docker: true
+
+# Use ROS 2 Humble in the container
+ros_version: humble

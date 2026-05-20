@@ -1,0 +1,7 @@
+# group_vars/ros_master.yml
+# Variables applied to all hosts in the [ros_master] group.
+
+# The master itself also has ROS installed and needs to know
+# its own IP as both MASTER_URI and HOSTNAME.
+ros_master_uri: "http://{{ ansible_host }}:{{ ros_master_port }}"
+ros_node_ip: "{{ ansible_host }}"

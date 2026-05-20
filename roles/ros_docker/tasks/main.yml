@@ -1,0 +1,62 @@
+---
+# roles/ros_docker/tasks/main.yml
+# Deploy a ROS container (via docker-compose) on a host that has Docker
+# installed.  Uses --network=host on Linux so the container shares the
+# host's network stack and is directly reachable by every other ROS node.
+
+- name: Ensure ros-docker working directory exists
+  ansible.builtin.file:
+    path: "{{ ros_docker_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Compute effective Docker image name
+  ansible.builtin.set_fact:
+    _ros_docker_image: >-
+      {{ ros_docker_image if ros_docker_image
+         else (ros_noetic_image if ros_version == 'noetic'
+               else ros_humble_image) }}
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ ros_docker_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy environment file for docker-compose
+  ansible.builtin.template:
+    src: ros.env.j2
+    dest: "{{ ros_docker_dir }}/ros.env"
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Pull the ROS Docker image
+  community.docker.docker_image:
+    name: "{{ _ros_docker_image }}"
+    source: pull
+    force_source: false
+
+- name: Deploy systemd service for ROS Docker container
+  ansible.builtin.template:
+    src: ros-docker.service.j2
+    dest: /etc/systemd/system/ros-docker.service
+    owner: root
+    group: root
+    mode: "0644"
+  when: ros_docker_systemd_service
+  notify:
+    - Reload systemd
+    - Restart ros-docker
+
+- name: Enable and start ros-docker systemd service
+  ansible.builtin.systemd:
+    name: ros-docker
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: ros_docker_systemd_service

@@ -1,0 +1,26 @@
+---
+# playbooks/docker_ros.yml
+# Install Docker CE and deploy ROS inside a container on docker hosts.
+#
+# Usage:
+#   ansible-playbook playbooks/docker_ros.yml
+#   ansible-playbook playbooks/docker_ros.yml -e ros_version=humble
+#   ansible-playbook playbooks/docker_ros.yml --limit docker-host1
+
+- name: Apply common baseline
+  hosts: ros_docker_hosts
+  become: true
+  roles:
+    - common
+
+- name: Install Docker CE
+  hosts: ros_docker_hosts
+  become: true
+  roles:
+    - docker
+
+- name: Deploy ROS container
+  hosts: ros_docker_hosts
+  become: true
+  roles:
+    - ros_docker

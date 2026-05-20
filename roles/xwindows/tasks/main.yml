@@ -1,0 +1,99 @@
+---
+# roles/xwindows/tasks/main.yml
+# Configure the remote host for X11 forwarding over SSH and
+# optionally install a lightweight X server for headless use.
+
+- name: Install X11 / X forwarding packages
+  ansible.builtin.apt:
+    name:
+      - xauth
+      - x11-apps          # provides xeyes, xclock — useful for testing
+      - x11-utils
+      - x11-xserver-utils
+      - xterm
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Enable X11 forwarding in sshd_config
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?X11Forwarding"
+    line: "X11Forwarding yes"
+    state: present
+  notify: Restart sshd
+
+- name: Enable X11 display offset in sshd_config
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?X11DisplayOffset"
+    line: "X11DisplayOffset 10"
+    state: present
+  notify: Restart sshd
+
+- name: Enable X11 use localhost in sshd_config
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?X11UseLocalhost"
+    line: "X11UseLocalhost yes"
+    state: present
+  notify: Restart sshd
+
+- name: Allow TCP forwarding (required for X11 tunnelling)
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?AllowTcpForwarding"
+    line: "AllowTcpForwarding yes"
+    state: present
+  notify: Restart sshd
+
+- name: Deploy DISPLAY helper profile script
+  ansible.builtin.copy:
+    dest: /etc/profile.d/x11_display.sh
+    content: |
+      #!/usr/bin/env bash
+      # Set a fallback DISPLAY when none is exported via SSH.
+      # Managed by Ansible — do not edit by hand.
+      if [ -z "${DISPLAY}" ]; then
+        export DISPLAY=":0"
+      fi
+    owner: root
+    group: root
+    mode: "0644"
+
+# ── Optional: virtual framebuffer for headless GUI rendering ──
+- name: Install Xvfb (virtual framebuffer) for headless rendering
+  ansible.builtin.apt:
+    name: xvfb
+    state: present
+  when:
+    - ansible_os_family == "Debian"
+    - xwindows_install_xvfb | default(false)
+
+- name: Deploy xvfb systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/xvfb.service
+    content: |
+      [Unit]
+      Description=X Virtual Frame Buffer
+      After=network.target
+
+      [Service]
+      ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+    owner: root
+    group: root
+    mode: "0644"
+  when: xwindows_install_xvfb | default(false)
+  notify: Reload systemd
+
+- name: Enable and start xvfb service
+  ansible.builtin.systemd:
+    name: xvfb
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: xwindows_install_xvfb | default(false)
