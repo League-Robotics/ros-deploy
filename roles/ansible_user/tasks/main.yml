@@ -1,0 +1,29 @@
+---
+# roles/ansible_user/tasks/main.yml
+# Creates the Ansible service account, grants passwordless sudo, and
+# installs the project SSH public key in its authorized_keys.
+
+- name: Create ansible service account
+  ansible.builtin.user:
+    name: "{{ ansible_managed_user }}"
+    comment: "{{ ansible_managed_user_gecos }}"
+    shell: "{{ ansible_managed_user_shell }}"
+    create_home: true
+    state: present
+
+- name: Grant ansible user passwordless sudo
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ ansible_managed_user }}"
+    content: "{{ ansible_managed_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  when: ansible_managed_user_sudo
+
+- name: Deploy ansible SSH public key
+  ansible.posix.authorized_key:
+    user: "{{ ansible_managed_user }}"
+    key: "{{ lookup('file', ansible_pubkey_file) }}"
+    state: present
+    exclusive: false

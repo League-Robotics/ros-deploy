@@ -1,0 +1,20 @@
+---
+# roles/ansible_user/defaults/main.yml
+
+# Name of the service account Ansible will use on every managed host.
+ansible_managed_user: ansible
+
+# Shell for the service account.
+ansible_managed_user_shell: /bin/bash
+
+# GECOS / comment field.
+ansible_managed_user_gecos: "Ansible automation account"
+
+# Grant passwordless sudo to the service account.
+ansible_managed_user_sudo: true
+
+# Path to the ansible public key.
+# Resolved relative to the playbook directory so it works from any CWD.
+# Run `dotconfig key gen ansible` (once) and `dotconfig key load ansible`
+# (each session) to produce the private key at config/files/ansible.
+ansible_pubkey_file: "{{ playbook_dir }}/../config/keys/ansible.pub"

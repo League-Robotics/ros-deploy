@@ -5,16 +5,16 @@
 - name: Validate ros_version
   ansible.builtin.assert:
     that:
-      - ros_version in ['noetic', 'humble']
-    fail_msg: "ros_version must be 'noetic' or 'humble', got: {{ ros_version }}"
-
-- name: Include ROS Noetic installation tasks
-  ansible.builtin.include_tasks: install_noetic.yml
-  when: ros_version == 'noetic'
+      - ros_version in ['humble', 'kilted']
+    fail_msg: "ros_version must be 'humble' or 'kilted', got: {{ ros_version }}"
 
 - name: Include ROS 2 Humble installation tasks
   ansible.builtin.include_tasks: install_humble.yml
   when: ros_version == 'humble'
+
+- name: Include ROS 2 Kilted installation tasks
+  ansible.builtin.include_tasks: install_kilted.yml
+  when: ros_version == 'kilted'
 
 - name: Deploy ROS environment variables profile script
   ansible.builtin.template:

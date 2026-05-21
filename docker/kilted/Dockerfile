@@ -1,45 +1,41 @@
 # syntax=docker/dockerfile:1
 # ──────────────────────────────────────────────────────────────────────────────
-# ROS Noetic (ROS 1) — multi-architecture image
-# Supported platforms: linux/amd64  linux/arm64  linux/arm/v7
+# ROS 2 Kilted Kaiju — multi-architecture image
+# Supported platforms: linux/amd64  linux/arm64
 #
 # Build:
 #   docker buildx build \
-#     --platform linux/amd64,linux/arm64,linux/arm/v7 \
-#     -t your-registry/ros-noetic:latest \
-#     --push docker/noetic/
+#     --platform linux/amd64,linux/arm64 \
+#     -t your-registry/ros-kilted:latest \
+#     --push docker/kilted/
 #
-# Run (joins the host ROS network via host networking):
+# Run (joins the host ROS 2 domain via host networking):
 #   docker run --rm --network host \
-#     -e ROS_MASTER_URI=http://<master-ip>:11311 \
-#     -e ROS_IP=$(hostname -I | awk '{print $1}') \
-#     your-registry/ros-noetic:latest roscore
+#     -e ROS_DOMAIN_ID=42 \
+#     your-registry/ros-kilted:latest ros2 run demo_nodes_cpp talker
 # ──────────────────────────────────────────────────────────────────────────────
-FROM ros:noetic-ros-base
+FROM ros:kilted-ros-base
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install common ROS tools and networking utilities
+# Install common ROS 2 tools and networking utilities
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-rosdep \
-    python3-rosinstall \
-    python3-rosinstall-generator \
-    python3-wstool \
-    python3-catkin-tools \
-    build-essential \
+    ros-dev-tools \
     net-tools \
     iputils-ping \
     iproute2 \
+    ros-kilted-demo-nodes-cpp \
+    ros-kilted-demo-nodes-py \
     && rm -rf /var/lib/apt/lists/*
 
 # Initialise rosdep
 RUN rosdep init && rosdep update
 
-# Copy entrypoint that sources ROS and honours ROS_MASTER_URI / ROS_IP
+# Copy entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-ENV ROS_DISTRO=noetic
+ENV ROS_DISTRO=kilted
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["bash"]

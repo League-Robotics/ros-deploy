@@ -1,21 +1,24 @@
 # ros-deploy
 
-Ansible playbooks for deploying ROS (Robot Operating System) to remote
-machines — physical hardware, VMs, and Docker containers — across
-Intel (amd64), ARM64 (Raspberry Pi 4/5), and emulated/Docker-on-Mac
-environments.
+Ansible project for deploying ROS 2 (Robot Operating System) to remote
+machines — physical hardware, Raspberry Pis, VMs, and Docker containers —
+across Intel (amd64) and ARM64 architectures.
+
+SSH credentials and secrets are managed with
+[dotconfig](https://github.com/ericbusboom/dotconfig).
 
 ## Features
 
 | Capability | Details |
 |---|---|
-| ROS 1 (Noetic) | Ubuntu 20.04, amd64 + arm64 |
 | ROS 2 (Humble) | Ubuntu 22.04, amd64 + arm64 |
+| ROS 2 (Kilted) | Ubuntu 24.04, amd64 + arm64 |
 | Raspberry Pi | 64-bit Ubuntu (arm64); detected automatically |
 | Docker | ROS runs in a container with `--network host` so it joins the same ROS network as physical nodes |
 | X Windows | SSH X11 forwarding configured so remote GUI apps render on your local screen |
 | Mac / emulation | Multi-arch Docker images via `buildx`; QEMU binfmt support on Linux hosts |
-| Network discovery | All nodes — bare-metal, VM, or container — share the same `ROS_MASTER_URI` / `ROS_DOMAIN_ID` so `rostopic list` and `ros2 topic list` see every node |
+| Network discovery | All nodes — bare-metal, VM, or container — share the same `ROS_DOMAIN_ID` and discover each other via DDS |
+| Ansible service account | Dedicated `ansible` OS user with its SSH key managed by dotconfig |
 
 ---
 
@@ -23,104 +26,148 @@ environments.
 
 ```
 ros-deploy/
-├── ansible.cfg                  # Ansible project settings
+├── ansible.cfg                  # Ansible settings (remote_user=ansible)
 ├── inventory/
-│   ├── hosts.ini                # EDIT THIS — your machines
+│   ├── hosts.ini                # EDIT THIS — host IPs for your network
 │   ├── group_vars/
 │   │   ├── all.yml              # Variables for every host
-│   │   ├── ros_master.yml       # Variables for the ROS master
 │   │   └── ros_docker_hosts.yml # Variables for Docker hosts
 │   └── host_vars/
 │       ├── raspi1.yml           # Raspberry Pi example
 │       └── docker-host1.yml     # Docker host example
 ├── playbooks/
+│   ├── bootstrap.yml            # ONE-TIME: create ansible user (run first)
 │   ├── site.yml                 # Run everything
-│   ├── ros_install.yml          # ROS on bare-metal / VMs only
+│   ├── ros_install.yml          # ROS 2 on bare-metal / VMs only
 │   ├── xwindows.yml             # X11 forwarding only
 │   └── docker_ros.yml           # Docker + ROS container only
 ├── roles/
+│   ├── ansible_user/            # Creates ansible OS user + deploys SSH key
 │   ├── common/                  # Baseline packages, /etc/hosts entries
-│   ├── ros/                     # ROS install (Noetic or Humble)
+│   ├── ros/                     # ROS 2 install (Humble / Kilted)
 │   ├── xwindows/                # SSH X11 forwarding, optional Xvfb
 │   ├── docker/                  # Docker CE install (multi-arch)
 │   └── ros_docker/              # docker-compose + systemd service for ROS
+├── scripts/
+│   ├── bootstrap-ansible-user.sh  # First-run helper (see Quick start)
+│   └── set-static-ip.sh           # Configure a static IP on a remote host
 └── docker/
-    ├── noetic/                  # Multi-arch Dockerfile for ROS Noetic
-    └── humble/                  # Multi-arch Dockerfile for ROS 2 Humble
+   ├── humble/                  # Multi-arch Dockerfile for ROS 2 Humble
+   └── kilted/                  # Multi-arch Dockerfile for ROS 2 Kilted
 ```
 
 ---
 
 ## Quick start
 
-### 1 — Install dependencies on your control machine
+### 0 — Prerequisites (control machine)
 
 ```bash
 pip install ansible
-ansible-galaxy collection install community.general community.docker
+ansible-galaxy collection install community.general community.docker ansible.posix
+pipx install dotconfig          # SSH key + secrets management
+# Install SOPS: https://github.com/getsops/sops
+# Generate an age key if you don't have one:
+age-keygen -o ~/.config/sops/age/keys.txt
 ```
 
-### 2 — Edit the inventory
-
-Copy and customise the example inventory to match your machines:
+### 1 — Edit the inventory
 
 ```bash
-cp inventory/hosts.ini inventory/hosts.ini   # already there
 $EDITOR inventory/hosts.ini
 ```
 
-Put the IP addresses and usernames of your machines into the appropriate groups:
+Replace the example IPs with your machines.  The `ansible_user` is set
+globally to `ansible` in `ansible.cfg` — do **not** add per-host
+`ansible_user=` entries (that is handled by the bootstrap step below).
 
-```ini
-[ros_master]
-ros-master ansible_host=192.168.1.10 ansible_user=ubuntu
+Set `ros_version` in `inventory/group_vars/all.yml`:
 
-[ros_workers]
-robot1    ansible_host=192.168.1.11 ansible_user=ubuntu
-raspi1    ansible_host=192.168.1.20 ansible_user=pi
+| Value    | ROS release              | Ubuntu |
+|----------|--------------------------|--------|
+| `humble` | ROS 2 Humble Hawksbill   | 22.04  |
+| `kilted` | ROS 2 Kilted Kaiju       | 24.04  |
 
-[ros_docker_hosts]
-docker-host1 ansible_host=192.168.1.30 ansible_user=ubuntu
-```
-
-Set global variables in `inventory/group_vars/all.yml` — especially `ros_version`
-and the `ros_master_hostname` / `ros_master_ip` values.
-
-### 3 — Run a playbook
+### 2 — Set up the Ansible SSH key
 
 ```bash
-# Install ROS on all physical/VM nodes:
-ansible-playbook playbooks/ros_install.yml
+# Generate the keypair once (stored encrypted in config/keys/):
+dotconfig key gen ansible
 
-# Install Docker and deploy ROS containers on docker hosts:
-ansible-playbook playbooks/docker_ros.yml
+# Decrypt it for this session (repeat every new shell):
+dotconfig key load ansible        # → config/files/ansible (mode 0600)
+```
 
-# Set up X11 forwarding on all nodes:
-ansible-playbook playbooks/xwindows.yml
+### 3 — Set a static IP (optional)
 
-# Run everything at once:
+Use the helper script to assign a static IP to a freshly provisioned host:
+
+```bash
+./scripts/set-static-ip.sh -u <your_user> -i 192.168.1.11 <hostname>
+```
+
+### 4 — Bootstrap each new host (one time per host)
+
+This uses **your personal** SSH account to create the `ansible` service
+user and install its public key.  After this step all Ansible runs use
+the `ansible` account automatically.
+
+```bash
+# Single host:
+./scripts/bootstrap-ansible-user.sh -u eric -K agony.local
+
+# Or run the bootstrap playbook directly:
+ansible-playbook playbooks/bootstrap.yml -u <your_user> --ask-become-pass
+```
+
+### 5 — Run the full deployment
+
+```bash
 ansible-playbook playbooks/site.yml
 ```
 
-### 4 — Verify ROS networking
+Or target individual playbooks:
 
-After deployment, SSH into any node and check that all nodes see each other:
-
-**ROS 1 (Noetic)**
 ```bash
-ssh -X ubuntu@192.168.1.11
-source /opt/ros/noetic/setup.bash
-rostopic list          # should list /rosout etc.
-rosnode list           # should show every registered node
+ansible-playbook playbooks/ros_install.yml   # ROS 2 only
+ansible-playbook playbooks/docker_ros.yml    # Docker + ROS container
+ansible-playbook playbooks/xwindows.yml      # X11 forwarding
 ```
 
-**ROS 2 (Humble)**
+### 6 — Verify ROS 2 networking
+
 ```bash
 ssh ubuntu@192.168.1.11
-source /opt/ros/humble/setup.bash
 ros2 topic list        # should list /parameter_events etc.
 ros2 node list
 ```
+
+---
+
+## SSH key management (dotconfig)
+
+The ansible SSH keypair is stored in dotconfig:
+
+```
+config/keys/ansible       ← SOPS-encrypted private key (safe to commit)
+config/keys/ansible.pub   ← plaintext public key (safe to commit)
+config/files/ansible      ← decrypted private key (gitignored, session-only)
+```
+
+Common commands:
+
+```bash
+dotconfig key gen ansible              # generate (once, team-wide)
+dotconfig key load ansible             # decrypt for this shell session
+dotconfig key pub ansible              # print the public key
+dotconfig key send ansible USER@HOST   # push public key via ssh-copy-id
+```
+
+`ansible.cfg` is pre-configured to use `config/files/ansible` as the
+private key and `ansible` as the remote user, so no extra flags are
+needed when running playbooks.
+
+Add `config/files/` to `.gitignore` — it holds plaintext private keys.
 
 ---
 
@@ -132,7 +179,7 @@ To display remote GUI applications on your local screen:
 # Trusted X forwarding (use -Y for tools like rviz that need it)
 ssh -Y ubuntu@192.168.1.11
 # Then launch any GUI:
-rviz &
+rviz2 &
 rqt &
 xclock &
 ```
@@ -175,47 +222,42 @@ from it but not deploy a ROS container on it), or to use a Linux VM.
 
 ## Multi-architecture Docker images
 
-Pre-built Dockerfiles live in `docker/noetic/` and `docker/humble/`.
+Pre-built Dockerfiles live in `docker/humble/` and `docker/kilted/`.
 Build and push multi-arch images with:
 
 ```bash
 docker buildx create --use
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t your-registry/ros-noetic:latest \
-  --push docker/noetic/
+  -t your-registry/ros-kilted:latest \
+  --push docker/kilted/
 ```
 
 ---
 
-## ROS network architecture
+## ROS 2 network architecture
 
 ```
                      ┌──────────────────────────────┐
                      │   Physical LAN / VLAN         │
   ┌──────────────────┼──────────────────────────────┐│
-  │  ros-master      │  (runs roscore for ROS 1)     ││
-  │  192.168.1.10    │                               ││
+  │  agony (amd64)   │  ROS_DOMAIN_ID=42             ││
+  │  192.168.1.11    │  DDS peer discovery           ││
   └──────────────────┼──────────────────────────────┘│
   ┌──────────────────┼──────────────────────────────┐│
-  │  robot1 (amd64)  │  ROS_MASTER_URI →master:11311 ││
-  │  192.168.1.11    │  ROS_IP=192.168.1.11          ││
-  └──────────────────┼──────────────────────────────┘│
-  ┌──────────────────┼──────────────────────────────┐│
-  │  raspi1 (arm64)  │  ROS_MASTER_URI →master:11311 ││
-  │  192.168.1.20    │  ROS_IP=192.168.1.20          ││
+  │  raspi1 (arm64)  │  ROS_DOMAIN_ID=42             ││
+  │  192.168.1.20    │  DDS peer discovery           ││
   └──────────────────┼──────────────────────────────┘│
   ┌──────────────────┼──────────────────────────────┐│
   │  docker-host1    │  Container uses --network host ││
-  │  192.168.1.30    │  ROS_IP=192.168.1.30          ││
+  │  192.168.1.30    │  ROS_DOMAIN_ID=42             ││
   │  └─ ros container│  (same IP as host)            ││
   └──────────────────┴──────────────────────────────┘│
                      └──────────────────────────────┘
 ```
 
-All nodes — regardless of whether they are bare-metal, VM, or Docker
-container — advertise their host IP (`ROS_IP` for ROS 1,
-`ROS_DOMAIN_ID` for ROS 2) so every other node can reach them directly.
+All nodes — bare-metal, VM, or Docker container — share `ROS_DOMAIN_ID`
+and discover each other automatically via DDS. No central master needed.
 
 ---
 
@@ -223,17 +265,27 @@ container — advertise their host IP (`ROS_IP` for ROS 1,
 
 | Variable | Default | Description |
 |---|---|---|
-| `ros_version` | `noetic` | `noetic` or `humble` |
-| `ros_package_variant` | `ros-base` | `ros-base` or `ros-desktop` |
-| `ros_master_ip` | first host in `[ros_master]` | IP of the ROS 1 master |
-| `ros_master_port` | `11311` | roscore port |
-| `ros_master_uri` | computed | Full `http://…:11311` URI |
-| `ros_node_ip` | `ansible_host` | IP this node advertises to ROS |
+| `ros_version` | `kilted` | `humble` / `kilted` |
+| `ros_package_variant` | `ros-base` | `ros-base` or `desktop` |
 | `ros_domain_id` | `42` | ROS 2 DDS domain (0–232) |
+| `ros_node_ip` | `ansible_host` | IP this node advertises to ROS |
 | `configure_xwindows` | `false` | Enable X11 forwarding role |
 | `install_docker` | `false` | Enable Docker role |
 | `ros_in_docker` | `false` | Enable ros_docker role |
 | `xwindows_install_xvfb` | `false` | Install Xvfb virtual framebuffer |
+| `ansible_managed_user` | `ansible` | Service account name (roles/ansible_user) |
+| `ansible_managed_user_sudo` | `true` | Grant NOPASSWD sudo to the service account |
 
 Override any variable per-host in `inventory/host_vars/<hostname>.yml` or
 per-group in `inventory/group_vars/<group>.yml`.
+
+---
+
+## Adding a new developer
+
+1. They generate an age key: `age-keygen -o ~/.config/sops/age/keys.txt`
+2. Add their age public key to `config/sops.yaml` and re-encrypt the ansible key:
+   ```bash
+   SOPS_CONFIG=config/sops.yaml sops updatekeys config/keys/ansible
+   ```
+3. They run `dotconfig key load ansible` to decrypt the ansible private key.

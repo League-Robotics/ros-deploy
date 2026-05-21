@@ -16,7 +16,7 @@
   ansible.builtin.set_fact:
     _ros_docker_image: >-
       {{ ros_docker_image if ros_docker_image
-         else (ros_noetic_image if ros_version == 'noetic'
+         else (ros_kilted_image if ros_version == 'kilted'
                else ros_humble_image) }}
 
 - name: Deploy docker-compose.yml

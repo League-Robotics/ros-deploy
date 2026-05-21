@@ -4,19 +4,19 @@
 # Run: ansible-playbook playbooks/site.yml
 
 - name: Apply common baseline to every managed host
-  hosts: ros_nodes
+  hosts: ros_all
   become: true
   roles:
     - common
 
-- name: Install ROS on physical/VM nodes
-  hosts: ros_master:ros_workers
+- name: Install ROS 2 on physical/VM nodes
+  hosts: ros_nodes
   become: true
   roles:
     - ros
 
 - name: Configure X Windows forwarding
-  hosts: ros_nodes
+  hosts: ros_all
   become: true
   roles:
     - role: xwindows

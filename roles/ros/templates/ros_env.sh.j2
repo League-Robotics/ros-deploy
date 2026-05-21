@@ -3,31 +3,17 @@
 # Automatically sourced for every login shell on {{ inventory_hostname }}.
 # Managed by Ansible — do not edit by hand.
 
-# ── Source the ROS setup script ──────────────────────────
+# ── Source the ROS 2 setup script ────────────────────────
 ROS_SETUP="/opt/ros/{{ ros_version }}/setup.bash"
 if [ -f "${ROS_SETUP}" ]; then
   # shellcheck source=/dev/null
   source "${ROS_SETUP}"
 fi
 
-{% if ros_version == 'noetic' %}
-# ── ROS 1 network configuration ──────────────────────────
-# All nodes must agree on the URI of the ROS master.
-export ROS_MASTER_URI="{{ ros_master_uri }}"
-
-# Advertise this machine's IP so other nodes can reach it.
-export ROS_IP="{{ ros_node_ip }}"
-
-# Unset ROS_HOSTNAME if ROS_IP is set (avoid ambiguity).
-unset ROS_HOSTNAME
-
-{% else %}
 # ── ROS 2 network configuration ──────────────────────────
-# All nodes sharing the same domain ID will discover each
-# other automatically via DDS multicast (or unicast peers).
+# All nodes sharing the same domain ID discover each other
+# automatically via DDS multicast / unicast peers.
 export ROS_DOMAIN_ID="{{ ros_domain_id }}"
 
-# Use ROS 2 localhost-only mode only if explicitly requested.
+# Use localhost-only mode only if explicitly requested.
 export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
-
-{% endif %}

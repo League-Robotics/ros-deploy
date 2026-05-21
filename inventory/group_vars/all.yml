@@ -3,13 +3,13 @@
 # ============================================================
 
 # ── ROS version ──────────────────────────────────────────
-# Supported: noetic (ROS 1, Ubuntu 20.04)
-#            humble (ROS 2, Ubuntu 22.04)
-ros_version: noetic
+# Supported: humble (ROS 2, Ubuntu 22.04)
+#            kilted  (ROS 2, Ubuntu 24.04)
+ros_version: kilted
 
 # ── ROS package variant ──────────────────────────────────
-# ros-base   : minimal (recommended for robots / headless)
-# ros-desktop: includes rviz, rqt, and other GUI tools
+# ros-base : minimal (recommended for robots / headless)
+# desktop  : includes rviz, rqt, and other GUI tools
 ros_package_variant: ros-base
 
 # ── Architecture handling ─────────────────────────────────
@@ -17,18 +17,9 @@ ros_package_variant: ros-base
 # Supported values: x86_64  aarch64  armv7l
 # You can override per host in host_vars/<hostname>.yml
 
-# ── ROS networking ────────────────────────────────────────
-# For ROS 1: every node needs to reach the master.
-# Set ros_master_host to the hostname or IP of the machine
-# in the [ros_master] group.  Adjust if your master has a
-# different reachable address on the ROS network.
-ros_master_hostname: "{{ groups['ros_master'][0] }}"
-ros_master_ip: "{{ hostvars[groups['ros_master'][0]]['ansible_host'] }}"
-ros_master_port: 11311
-ros_master_uri: "http://{{ ros_master_ip }}:{{ ros_master_port }}"
-
-# For ROS 2: all nodes share the same domain ID so they
-# discover each other via DDS multicast / unicast peers.
+# ── ROS 2 networking ──────────────────────────────────────
+# All nodes sharing the same domain ID discover each other
+# automatically via DDS multicast / unicast peers.
 ros_domain_id: 42
 
 # Each node advertises itself by its primary ansible_host
@@ -47,5 +38,5 @@ install_docker: false
 ros_in_docker: false
 
 # Docker image tags used in docker-compose templates
-ros_noetic_image: "ros:noetic-ros-base"
 ros_humble_image: "ros:humble-ros-base"
+ros_kilted_image: "ros:kilted-ros-base"

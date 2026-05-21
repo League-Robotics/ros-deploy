@@ -1,17 +1,17 @@
 ---
 # playbooks/ros_install.yml
-# Standalone playbook: install ROS on physical machines and VMs.
+# Standalone playbook: install ROS 2 on physical machines and VMs.
 # Run: ansible-playbook playbooks/ros_install.yml
 # Override version: ansible-playbook playbooks/ros_install.yml -e ros_version=humble
 
 - name: Apply common baseline
-  hosts: ros_master:ros_workers
+  hosts: ros_nodes
   become: true
   roles:
     - common
 
-- name: Install ROS
-  hosts: ros_master:ros_workers
+- name: Install ROS 2
+  hosts: ros_nodes
   become: true
   roles:
     - ros

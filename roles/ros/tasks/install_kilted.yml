@@ -1,0 +1,99 @@
+---
+# roles/ros/tasks/install_kilted.yml
+# Installs ROS 2 Kilted Kaiju on Ubuntu 24.04 (amd64 or arm64).
+#
+# Repository setup uses the ros2-apt-source package (replaces the legacy
+# apt-key + sources.list approach used by Humble and earlier distros).
+# See: https://docs.ros.org/en/kilted/Installation/Ubuntu-Install-Debs.html
+
+- name: Assert Ubuntu 24.04 (Noble) for ROS 2 Kilted
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version is version('24.04', '==')
+    fail_msg: >
+      ROS 2 Kilted requires Ubuntu 24.04 (Noble).
+      Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+- name: Ensure required locale packages are present
+  ansible.builtin.apt:
+    name: locales
+    state: present
+    update_cache: true
+
+- name: Generate en_US.UTF-8 locale
+  community.general.locale_gen:
+    name: en_US.UTF-8
+    state: present
+
+- name: Set system-wide locale to en_US.UTF-8
+  ansible.builtin.command: update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
+  changed_when: false
+
+- name: Ensure universe repository is enabled
+  ansible.builtin.apt_repository:
+    repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+    state: present
+
+- name: Install curl (required for repository setup)
+  ansible.builtin.apt:
+    name:
+      - curl
+      - software-properties-common
+    state: present
+    update_cache: true
+
+- name: Fetch latest ros2-apt-source release metadata from GitHub
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest
+    return_content: true
+    headers:
+      Accept: application/vnd.github.v3+json
+  register: _ros_apt_source_release
+
+- name: Set ros_apt_source_version fact
+  ansible.builtin.set_fact:
+    _ros_apt_source_version: "{{ _ros_apt_source_release.json.tag_name }}"
+
+- name: Download ros2-apt-source deb package
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/ros-infrastructure/ros-apt-source/releases/download/{{ _ros_apt_source_version }}/ros2-apt-source_{{ _ros_apt_source_version }}.{{ ansible_distribution_release }}_all.deb
+    dest: /tmp/ros2-apt-source.deb
+    mode: "0644"
+
+- name: Install ros2-apt-source (configures ROS 2 apt repo and signing key)
+  ansible.builtin.apt:
+    deb: /tmp/ros2-apt-source.deb
+    state: present
+
+- name: Update apt cache after adding ROS 2 repository
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Upgrade existing packages before ROS install
+  ansible.builtin.apt:
+    upgrade: dist
+
+- name: Install ROS 2 Kilted package
+  ansible.builtin.apt:
+    name: "ros-kilted-{{ ros_package_variant }}"
+    state: present
+  notify: Source ROS environment
+
+- name: Install ros-dev-tools (colcon, rosdep, vcstool, etc.)
+  ansible.builtin.apt:
+    name: ros-dev-tools
+    state: present
+
+- name: Initialise rosdep (skip if already done)
+  ansible.builtin.command: rosdep init
+  args:
+    creates: /etc/ros/rosdep/sources.list.d/20-default.list
+  register: ros_rosdep_init
+  changed_when: ros_rosdep_init.rc == 0
+
+- name: Update rosdep for the ansible user
+  ansible.builtin.command: rosdep update
+  become: false
+  changed_when: true

@@ -1,0 +1,38 @@
+---
+# playbooks/bootstrap.yml
+# ──────────────────────────────────────────────────────────────────────────────
+# One-time bootstrap: creates the 'ansible' service account and installs
+# its SSH public key on a freshly provisioned host.
+#
+# Run this BEFORE any other playbook, using YOUR personal SSH credentials
+# (not the ansible user, which doesn't exist yet):
+#
+#   ansible-playbook playbooks/bootstrap.yml \
+#     -u <your_username> --ask-become-pass \
+#     [--ask-pass | --private-key ~/.ssh/id_ed25519]
+#
+# Against a single ad-hoc host (no inventory required):
+#
+#   ansible-playbook playbooks/bootstrap.yml \
+#     -i "192.168.1.20," \
+#     -u ubuntu --ask-become-pass
+#
+# Or use the helper script which handles key decryption automatically:
+#
+#   ./scripts/bootstrap-ansible-user.sh -u ubuntu 192.168.1.20
+# ──────────────────────────────────────────────────────────────────────────────
+
+- name: Bootstrap ansible service account
+  hosts: "{{ target_hosts | default('all') }}"
+  become: true
+  gather_facts: false
+
+  vars:
+    # Override the SSH user for this initial connection.
+    # -e bootstrap_user=<name>  overrides the login account (default: $USER).
+    # Pass --private-key on the CLI (or -k in bootstrap-ansible-user.sh) to
+    # specify a key; omitting it falls back to the SSH agent.
+    ansible_user: "{{ bootstrap_user | default(lookup('env', 'USER')) }}"
+
+  roles:
+    - ansible_user
