@@ -1,0 +1,8 @@
+---
+# roles/desktop/defaults/main.yml
+
+desktop_user: "{{ ansible_user }}"
+desktop_vnc_geometry: "1920x1080"
+desktop_vnc_depth: 24
+desktop_vnc_display: 1
+desktop_vnc_password: "robotics"

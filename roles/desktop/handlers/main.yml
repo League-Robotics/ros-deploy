@@ -1,0 +1,10 @@
+---
+# roles/desktop/handlers/main.yml
+
+- name: Restart vncserver
+  ansible.builtin.systemd:
+    name: vncserver
+    state: restarted
+    scope: user
+  become: true
+  become_user: "{{ desktop_user }}"

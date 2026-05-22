@@ -1,0 +1,14 @@
+---
+# playbooks/desktop.yml
+# Install XFCE + TurboVNC (no password) on target hosts.
+# Run: ansible-playbook playbooks/desktop.yml -e target_hosts=<host>
+
+- name: Install desktop environment and VNC
+  hosts: "{{ target_hosts | default('ros_nodes') }}"
+  become: true
+
+  vars:
+    desktop_user: "{{ ansible_user }}"
+
+  roles:
+    - desktop

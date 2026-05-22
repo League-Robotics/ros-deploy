@@ -1,0 +1,116 @@
+---
+# roles/desktop/tasks/main.yml
+# Installs XFCE + TurboVNC (no password) and starts VNC on boot.
+# Removes GNOME/GDM if present and replaces with LightDM.
+
+- name: Install XFCE and dependencies
+  ansible.builtin.apt:
+    name:
+      - xfce4
+      - xfce4-terminal
+      - xfce4-taskmanager
+      - dbus-x11
+      - lightdm
+    state: present
+    update_cache: true
+
+- name: Remove GNOME and GDM
+  ansible.builtin.apt:
+    name:
+      - gnome-shell
+      - ubuntu-desktop
+      - gdm3
+    state: absent
+    purge: true
+  ignore_errors: true
+
+- name: Autoremove orphaned GNOME packages
+  ansible.builtin.apt:
+    autoremove: true
+
+- name: Set LightDM as default display manager
+  ansible.builtin.copy:
+    dest: /etc/X11/default-display-manager
+    content: "/usr/sbin/lightdm\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Get latest TurboVNC release version
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/TurboVNC/turbovnc/releases/latest
+    return_content: true
+    headers:
+      Accept: application/vnd.github.v3+json
+  register: _turbovnc_release
+
+- name: Set TurboVNC version fact
+  ansible.builtin.set_fact:
+    _turbovnc_version: "{{ _turbovnc_release.json.tag_name }}"
+
+- name: Download TurboVNC deb
+  ansible.builtin.get_url:
+    url: "https://github.com/TurboVNC/turbovnc/releases/download/{{ _turbovnc_version }}/turbovnc_{{ _turbovnc_version }}_amd64.deb"
+    dest: /tmp/turbovnc.deb
+    mode: "0644"
+
+- name: Install TurboVNC
+  ansible.builtin.apt:
+    deb: /tmp/turbovnc.deb
+    state: present
+
+- name: Create VNC systemd user service directory for {{ desktop_user }}
+  ansible.builtin.file:
+    path: "/home/{{ desktop_user }}/.config/systemd/user"
+    state: directory
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0755"
+
+- name: Set VNC password
+  ansible.builtin.shell: |
+    echo "{{ desktop_vnc_password }}" | /opt/TurboVNC/bin/vncpasswd -f > /home/{{ desktop_user }}/.vnc/passwd
+    chmod 600 /home/{{ desktop_user }}/.vnc/passwd
+  become: true
+  become_user: "{{ desktop_user }}"
+  args:
+    creates: "/home/{{ desktop_user }}/.vnc/passwd"
+
+- name: Deploy VNC systemd user service
+  ansible.builtin.copy:
+    dest: "/home/{{ desktop_user }}/.config/systemd/user/vncserver.service"
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=TurboVNC server
+      After=network.target
+
+      [Service]
+      Type=forking
+      ExecStart=/opt/TurboVNC/bin/vncserver :{{ desktop_vnc_display }} \
+        -geometry {{ desktop_vnc_geometry }} \
+        -depth {{ desktop_vnc_depth }} \
+        -wm xfce
+      ExecStop=/opt/TurboVNC/bin/vncserver -kill :{{ desktop_vnc_display }}
+      Restart=on-failure
+
+      [Install]
+      WantedBy=default.target
+  notify: Restart vncserver
+
+- name: Enable lingering for {{ desktop_user }} (so user services start at boot)
+  ansible.builtin.command: loginctl enable-linger {{ desktop_user }}
+  args:
+    creates: "/var/lib/systemd/linger/{{ desktop_user }}"
+
+- name: Enable and start VNC user service
+  ansible.builtin.systemd:
+    name: vncserver
+    state: started
+    enabled: true
+    scope: user
+    daemon_reload: true
+  become: true
+  become_user: "{{ desktop_user }}"

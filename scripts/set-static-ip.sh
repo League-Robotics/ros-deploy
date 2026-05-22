@@ -114,21 +114,19 @@ echo ""
 
 # ── Confirmation ──────────────────────────────────────────────────────────────
 read -rp "Apply this configuration? [y/N] " CONFIRM
-[[ "${CONFIRM,,}" == "y" ]] || { echo "Aborted."; exit 0; }
+[[ "$(echo "${CONFIRM}" | tr '[:upper:]' '[:lower:]')" == "y" ]] || { echo "Aborted."; exit 0; }
 
 # ── Apply static IP ───────────────────────────────────────────────────────────
 echo "==> Applying static IP — connection will drop briefly..."
 
-echo "${SUDO_PASS}" | ssh "${SSH_OPTS[@]}" "${SSH_USER}@${TARGET_HOST}" bash -s -- \
-  "${NM_CON}" "${STATIC_IP}" "${PREFIX}" "${GW}" <<'REMOTE'
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${TARGET_HOST}" bash <<REMOTE
 set -euo pipefail
-CON="$1"; IP="$2"; PREFIX="$3"; GW="$4"
-sudo -S nmcli connection modify "${CON}" \
+echo "${SUDO_PASS}" | sudo -S nmcli connection modify "${NM_CON}" \
   ipv4.method    manual \
-  ipv4.addresses "${IP}/${PREFIX}" \
+  ipv4.addresses "${STATIC_IP}/${PREFIX}" \
   ipv4.gateway   "${GW}" \
   ipv4.dns       "8.8.8.8,8.8.4.4"
-sudo -S nmcli connection up "${CON}" >/dev/null
+echo "${SUDO_PASS}" | sudo -S nmcli connection up "${NM_CON}" >/dev/null
 REMOTE
 
 # ── Verify ────────────────────────────────────────────────────────────────────
