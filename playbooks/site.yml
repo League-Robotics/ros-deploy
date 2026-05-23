@@ -15,6 +15,12 @@
   roles:
     - ros
 
+- name: Build the heartbeat connectivity-check package
+  hosts: ros_nodes
+  become: true
+  roles:
+    - heartbeat
+
 - name: Configure X Windows forwarding
   hosts: ros_all
   become: true

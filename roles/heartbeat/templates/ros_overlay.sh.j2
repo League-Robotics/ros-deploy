@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# {{ heartbeat_overlay_profile_path }}
+# Sources the shared colcon workspace overlay so packages built into
+# {{ heartbeat_workspace_dir }} (e.g. `heartbeat`) are on the ROS path.
+# Managed by Ansible — do not edit by hand.
+
+OVERLAY_SETUP="{{ heartbeat_workspace_dir }}/install/setup.bash"
+if [ -f "${OVERLAY_SETUP}" ]; then
+  # shellcheck source=/dev/null
+  source "${OVERLAY_SETUP}"
+fi

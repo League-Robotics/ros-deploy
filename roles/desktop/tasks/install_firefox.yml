@@ -1,0 +1,100 @@
+---
+# roles/desktop/tasks/install_firefox.yml
+# Install Firefox from the Mozilla apt repository instead of Ubuntu's
+# snap shim. The snap is unusable inside a VNC session (no dbus user
+# bus, sandbox failures), which breaks every browser-based auth flow
+# (e.g. GitHub sign-in from VS Code).
+#
+# Steps:
+#   1. Add the Mozilla signing key under /etc/apt/keyrings.
+#   2. Add the Mozilla apt repository.
+#   3. Pin the Mozilla origin so its `firefox` package beats the Ubuntu
+#      snap-transition package of the same name.
+#   4. Install firefox.
+#   5. Register it as the system default browser via update-alternatives
+#      and a /etc/profile.d snippet that exports BROWSER.
+
+- name: Ensure /etc/apt/keyrings exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Add Mozilla apt signing key
+  ansible.builtin.get_url:
+    url: https://packages.mozilla.org/apt/repo-signing-key.gpg
+    dest: /etc/apt/keyrings/packages.mozilla.org.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add Mozilla apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main"
+    filename: mozilla
+    state: present
+    update_cache: false
+
+- name: Pin Mozilla apt origin above Ubuntu's snap-shim firefox
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/mozilla
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Package: *
+      Pin: origin packages.mozilla.org
+      Pin-Priority: 1000
+
+- name: Update apt cache after adding Mozilla repository
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Remove Ubuntu firefox snap-transition package if installed
+  ansible.builtin.apt:
+    name: firefox
+    state: absent
+    purge: true
+  when: false  # only enable if a snap firefox install is detected interfering
+  # (kept as documentation; safe to leave disabled because the pin above
+  #  causes apt to install/upgrade to the Mozilla package on the next run)
+
+- name: Install Firefox from Mozilla apt repository
+  ansible.builtin.apt:
+    name: firefox
+    state: present
+    default_release: mozilla
+
+- name: Register Firefox as x-www-browser alternative
+  community.general.alternatives:
+    name: x-www-browser
+    link: /usr/bin/x-www-browser
+    path: /usr/bin/firefox
+    priority: 200
+
+- name: Register Firefox as gnome-www-browser alternative
+  community.general.alternatives:
+    name: gnome-www-browser
+    link: /usr/bin/gnome-www-browser
+    path: /usr/bin/firefox
+    priority: 200
+
+- name: Export BROWSER=firefox for every login shell
+  ansible.builtin.copy:
+    dest: /etc/profile.d/browser.sh
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/desktop) — exported so xdg-open and
+      # editors like VS Code know which browser to launch for OAuth.
+      export BROWSER=/usr/bin/firefox
+
+- name: Set Firefox as the per-user xdg default browser
+  ansible.builtin.command: xdg-settings set default-web-browser firefox.desktop
+  become: true
+  become_user: "{{ desktop_user }}"
+  changed_when: false
+  failed_when: false

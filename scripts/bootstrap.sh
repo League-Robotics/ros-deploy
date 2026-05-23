@@ -165,7 +165,28 @@ if [[ "$(echo "${SET_STATIC}" | tr '[:upper:]' '[:lower:]')" == "y" ]]; then
   fi
 fi
 
-# ── Step 4: Bootstrap ansible user ────────────────────────────────────────────
+# ── Step 4: Install personal SSH key so ansible can connect ───────────────────
+echo ""
+echo "==> Copying personal SSH key to ${SSH_USER}@${TARGET_HOST}..."
+SSH_PUB_KEY=""
+for _candidate in ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa.pub ~/.ssh/id_ecdsa.pub; do
+  if [[ -f "${_candidate}" ]]; then
+    SSH_PUB_KEY="${_candidate}"
+    break
+  fi
+done
+if [[ -n "${SSH_PUB_KEY}" ]]; then
+  sshpass -p "${SSH_PASS}" ssh-copy-id \
+    -o StrictHostKeyChecking=accept-new \
+    -i "${SSH_PUB_KEY}" \
+    ${SSH_KEY:+-i "${SSH_KEY}"} \
+    "${SSH_USER}@${TARGET_HOST}" 2>&1 | grep -v "^$" || true
+  echo "    Done."
+else
+  echo "    No personal public key found, skipping."
+fi
+
+# ── Step 5: Bootstrap ansible user ────────────────────────────────────────────
 echo ""
 echo "==> Running bootstrap-ansible-user..."
 "${SCRIPT_DIR}/bootstrap-ansible-user.sh" \

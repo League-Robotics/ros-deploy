@@ -1,6 +1,7 @@
 ---
 # roles/desktop/tasks/main.yml
-# Installs XFCE + TurboVNC (no password) and starts VNC on boot.
+# Installs XFCE + VNC and starts VNC on boot.
+# Uses TurboVNC on amd64, TigerVNC (from apt) on aarch64.
 # Removes GNOME/GDM if present and replaces with LightDM.
 
 - name: Install XFCE and dependencies
@@ -36,6 +37,8 @@
     group: root
     mode: "0644"
 
+# ── TurboVNC (amd64 only) ─────────────────────────────────────────────────────
+
 - name: Get latest TurboVNC release version
   ansible.builtin.uri:
     url: https://api.github.com/repos/TurboVNC/turbovnc/releases/latest
@@ -43,31 +46,35 @@
     headers:
       Accept: application/vnd.github.v3+json
   register: _turbovnc_release
+  when: ansible_architecture == "x86_64"
 
-- name: Set TurboVNC version fact
-  ansible.builtin.set_fact:
-    _turbovnc_version: "{{ _turbovnc_release.json.tag_name }}"
-
-- name: Download TurboVNC deb
-  ansible.builtin.get_url:
-    url: "https://github.com/TurboVNC/turbovnc/releases/download/{{ _turbovnc_version }}/turbovnc_{{ _turbovnc_version }}_amd64.deb"
-    dest: /tmp/turbovnc.deb
-    mode: "0644"
-
-- name: Install TurboVNC
+- name: Download and install TurboVNC (amd64)
   ansible.builtin.apt:
-    deb: /tmp/turbovnc.deb
+    deb: "https://github.com/TurboVNC/turbovnc/releases/download/{{ _turbovnc_release.json.tag_name }}/turbovnc_{{ _turbovnc_release.json.tag_name }}_amd64.deb"
     state: present
+  when: ansible_architecture == "x86_64"
 
-- name: Create VNC systemd user service directory for {{ desktop_user }}
+# ── TigerVNC (aarch64) ────────────────────────────────────────────────────────
+
+- name: Install TigerVNC (aarch64)
+  ansible.builtin.apt:
+    name:
+      - tigervnc-standalone-server
+      - tigervnc-common
+    state: present
+  when: ansible_architecture == "aarch64"
+
+# ── VNC password ──────────────────────────────────────────────────────────────
+
+- name: Create .vnc directory for {{ desktop_user }}
   ansible.builtin.file:
-    path: "/home/{{ desktop_user }}/.config/systemd/user"
+    path: "/home/{{ desktop_user }}/.vnc"
     state: directory
     owner: "{{ desktop_user }}"
     group: "{{ desktop_user }}"
     mode: "0755"
 
-- name: Set VNC password
+- name: Set VNC password (TurboVNC, amd64)
   ansible.builtin.shell: |
     echo "{{ desktop_vnc_password }}" | /opt/TurboVNC/bin/vncpasswd -f > /home/{{ desktop_user }}/.vnc/passwd
     chmod 600 /home/{{ desktop_user }}/.vnc/passwd
@@ -75,8 +82,44 @@
   become_user: "{{ desktop_user }}"
   args:
     creates: "/home/{{ desktop_user }}/.vnc/passwd"
+  when: ansible_architecture == "x86_64"
 
-- name: Deploy VNC systemd user service
+- name: Set VNC password (TigerVNC, aarch64)
+  ansible.builtin.shell: |
+    printf "{{ desktop_vnc_password }}\n{{ desktop_vnc_password }}\nn\n" | vncpasswd
+    chmod 600 /home/{{ desktop_user }}/.vnc/passwd
+  become: true
+  become_user: "{{ desktop_user }}"
+  args:
+    creates: "/home/{{ desktop_user }}/.vnc/passwd"
+  when: ansible_architecture == "aarch64"
+
+# ── xstartup for TigerVNC ─────────────────────────────────────────────────────
+
+- name: Deploy xstartup for TigerVNC (aarch64)
+  ansible.builtin.copy:
+    dest: "/home/{{ desktop_user }}/.vnc/xstartup"
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      unset SESSION_MANAGER
+      unset DBUS_SESSION_BUS_ADDRESS
+      exec startxfce4
+  when: ansible_architecture == "aarch64"
+
+# ── Systemd user service ──────────────────────────────────────────────────────
+
+- name: Create systemd user service directory for {{ desktop_user }}
+  ansible.builtin.file:
+    path: "/home/{{ desktop_user }}/.config/systemd/user"
+    state: directory
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0755"
+
+- name: Deploy VNC systemd user service (TurboVNC, amd64)
   ansible.builtin.copy:
     dest: "/home/{{ desktop_user }}/.config/systemd/user/vncserver.service"
     owner: "{{ desktop_user }}"
@@ -98,6 +141,32 @@
 
       [Install]
       WantedBy=default.target
+  when: ansible_architecture == "x86_64"
+  notify: Restart vncserver
+
+- name: Deploy VNC systemd user service (TigerVNC, aarch64)
+  ansible.builtin.copy:
+    dest: "/home/{{ desktop_user }}/.config/systemd/user/vncserver.service"
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=TigerVNC server
+      After=network.target
+
+      [Service]
+      Type=forking
+      ExecStart=/usr/bin/vncserver :{{ desktop_vnc_display }} \
+        -geometry {{ desktop_vnc_geometry }} \
+        -depth {{ desktop_vnc_depth }} \
+        -localhost no
+      ExecStop=/usr/bin/vncserver -kill :{{ desktop_vnc_display }}
+      Restart=on-failure
+
+      [Install]
+      WantedBy=default.target
+  when: ansible_architecture == "aarch64"
   notify: Restart vncserver
 
 - name: Enable lingering for {{ desktop_user }} (so user services start at boot)
@@ -114,3 +183,9 @@
     daemon_reload: true
   become: true
   become_user: "{{ desktop_user }}"
+
+# ── Default web browser ────────────────────────────────────────────────────────
+
+- name: Install Firefox (from Mozilla apt repo, not snap)
+  ansible.builtin.include_tasks: install_firefox.yml
+  when: desktop_install_firefox

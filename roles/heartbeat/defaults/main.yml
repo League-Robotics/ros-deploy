@@ -1,0 +1,10 @@
+---
+# roles/heartbeat/defaults/main.yml
+
+# System-wide colcon workspace. The heartbeat package is synced into
+# {{ heartbeat_workspace_dir }}/src/heartbeat and built with colcon.
+heartbeat_workspace_dir: /opt/ros_ws
+
+# Profile snippet that sources the overlay so `ros2 run heartbeat heartbeat`
+# is on PATH for any login shell. Loaded after /etc/profile.d/ros_env.sh.
+heartbeat_overlay_profile_path: /etc/profile.d/ros_overlay.sh

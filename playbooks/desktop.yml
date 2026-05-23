@@ -1,14 +1,15 @@
 ---
 # playbooks/desktop.yml
-# Install XFCE + TurboVNC (no password) on target hosts.
+# Install XFCE + TurboVNC on target hosts.
 # Run: ansible-playbook playbooks/desktop.yml -e target_hosts=<host>
+#
+# Set `desktop_user` in inventory/host_vars/<host>.yml to control which
+# account owns the VNC session. Defaults to the connecting user (ansible),
+# which is rarely what you want.
 
 - name: Install desktop environment and VNC
   hosts: "{{ target_hosts | default('ros_nodes') }}"
   become: true
-
-  vars:
-    desktop_user: "{{ ansible_user }}"
 
   roles:
     - desktop

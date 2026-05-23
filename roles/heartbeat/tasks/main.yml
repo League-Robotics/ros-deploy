@@ -1,0 +1,50 @@
+---
+# roles/heartbeat/tasks/main.yml
+# Builds the `heartbeat` ROS 2 package on each node so users can run
+# `ros2 run heartbeat heartbeat` to verify peer discovery on the
+# shared ROS_DOMAIN_ID.
+
+- name: Ensure colcon workspace src/ directory exists
+  ansible.builtin.file:
+    path: "{{ heartbeat_workspace_dir }}/src"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Sync heartbeat package sources into the workspace
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../ros_pkgs/heartbeat/"
+    dest: "{{ heartbeat_workspace_dir }}/src/heartbeat/"
+    delete: true
+    rsync_opts:
+      - "--exclude=build"
+      - "--exclude=install"
+      - "--exclude=log"
+      - "--exclude=__pycache__"
+      - "--exclude=*.egg-info"
+  register: heartbeat_sync
+
+- name: Ensure python3-colcon-common-extensions is installed
+  ansible.builtin.apt:
+    name: python3-colcon-common-extensions
+    state: present
+
+- name: Build heartbeat package with colcon
+  ansible.builtin.shell: |
+    set -euo pipefail
+    source /opt/ros/{{ ros_version }}/setup.bash
+    cd {{ heartbeat_workspace_dir }}
+    colcon build --packages-select heartbeat --symlink-install
+  args:
+    executable: /bin/bash
+  when: heartbeat_sync is changed
+  changed_when: true
+
+- name: Install overlay-sourcing profile snippet
+  ansible.builtin.template:
+    src: ros_overlay.sh.j2
+    dest: "{{ heartbeat_overlay_profile_path }}"
+    owner: root
+    group: root
+    mode: "0644"

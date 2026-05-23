@@ -1,0 +1,11 @@
+---
+# playbooks/heartbeat.yml
+# Build the connectivity-check `heartbeat` package on every ROS node.
+# After this runs, `ros2 run heartbeat heartbeat` on any node will
+# announce that host and print the set of peers it sees.
+
+- name: Build heartbeat package on every ROS node
+  hosts: ros_nodes
+  become: true
+  roles:
+    - heartbeat

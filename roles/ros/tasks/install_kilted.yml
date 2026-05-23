@@ -32,7 +32,7 @@
 
 - name: Ensure universe repository is enabled
   ansible.builtin.apt_repository:
-    repo: "deb http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} universe"
+    repo: "{{ 'deb http://ports.ubuntu.com/ubuntu-ports' if ansible_architecture == 'aarch64' else 'deb http://archive.ubuntu.com/ubuntu' }} {{ ansible_distribution_release }} universe"
     state: present
 
 - name: Install curl (required for repository setup)

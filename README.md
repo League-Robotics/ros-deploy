@@ -40,14 +40,18 @@ ros-deploy/
 │   ├── site.yml                 # Run everything
 │   ├── ros_install.yml          # ROS 2 on bare-metal / VMs only
 │   ├── xwindows.yml             # X11 forwarding only
-│   └── docker_ros.yml           # Docker + ROS container only
+│   ├── docker_ros.yml           # Docker + ROS container only
+│   └── heartbeat.yml            # Build the connectivity-check package
 ├── roles/
 │   ├── ansible_user/            # Creates ansible OS user + deploys SSH key
 │   ├── common/                  # Baseline packages, /etc/hosts entries
 │   ├── ros/                     # ROS 2 install (Humble / Kilted)
 │   ├── xwindows/                # SSH X11 forwarding, optional Xvfb
 │   ├── docker/                  # Docker CE install (multi-arch)
-│   └── ros_docker/              # docker-compose + systemd service for ROS
+│   ├── ros_docker/              # docker-compose + systemd service for ROS
+│   └── heartbeat/               # Builds the connectivity-check ROS package
+├── ros_pkgs/
+│   └── heartbeat/               # ROS 2 package: announces host, lists peers
 ├── scripts/
 │   ├── bootstrap-ansible-user.sh  # First-run helper (see Quick start)
 │   └── set-static-ip.sh           # Configure a static IP on a remote host
@@ -132,6 +136,7 @@ Or target individual playbooks:
 ansible-playbook playbooks/ros_install.yml   # ROS 2 only
 ansible-playbook playbooks/docker_ros.yml    # Docker + ROS container
 ansible-playbook playbooks/xwindows.yml      # X11 forwarding
+ansible-playbook playbooks/heartbeat.yml     # Build connectivity-check package
 ```
 
 ### 6 — Verify ROS 2 networking
@@ -141,6 +146,25 @@ ssh ubuntu@192.168.1.11
 ros2 topic list        # should list /parameter_events etc.
 ros2 node list
 ```
+
+#### Heartbeat connectivity check
+
+The `heartbeat` package (built by `site.yml` or `heartbeat.yml`) provides a
+single node that publishes this host's name on `/heartbeat` once per second
+and prints the set of peers it sees on the same topic. Run it on every node
+to confirm DDS discovery is working across the whole fleet:
+
+```bash
+ssh ubuntu@192.168.1.11
+ros2 run heartbeat heartbeat
+# [INFO] heartbeat up on host 'agony', publishing to /heartbeat every 1s
+# [INFO] I see 2 peer(s): docker-host1, raspi1
+```
+
+A peer drops off the list after ~10 s of silence. `Ctrl-C` to stop.
+For nodes running inside a Docker container, exec into the container first:
+`docker exec -it ros-docker ros2 run heartbeat heartbeat` (the package
+must be present in the container image, or mount the host workspace into it).
 
 ---
 
@@ -273,6 +297,7 @@ and discover each other automatically via DDS. No central master needed.
 | `install_docker` | `false` | Enable Docker role |
 | `ros_in_docker` | `false` | Enable ros_docker role |
 | `xwindows_install_xvfb` | `false` | Install Xvfb virtual framebuffer |
+| `desktop_install_firefox` | `true` | In `desktop` role: install Firefox from Mozilla apt repo (not snap) as the default browser |
 | `ansible_managed_user` | `ansible` | Service account name (roles/ansible_user) |
 | `ansible_managed_user_sudo` | `true` | Grant NOPASSWD sudo to the service account |
 

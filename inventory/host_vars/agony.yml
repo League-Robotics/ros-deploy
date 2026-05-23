@@ -1,0 +1,6 @@
+# inventory/host_vars/agony.yml
+# Per-host overrides for the `agony` workstation (amd64, Ubuntu 24.04).
+
+# Account that owns the XFCE/TurboVNC session installed by roles/desktop.
+# Must be an existing local user account on the host.
+desktop_user: eric

@@ -1,8 +1,18 @@
 ---
 # roles/desktop/defaults/main.yml
 
-desktop_user: "{{ ansible_user }}"
+# Account that owns the VNC session, .vnc/passwd, the systemd --user
+# service, and the per-user xdg-settings default browser.
+# Falls back to the user Ansible connected as (typically `ansible`),
+# but you almost certainly want to set this explicitly in host_vars/
+# to your real desktop login — e.g. `desktop_user: eric`.
+desktop_user: "{{ ansible_user | default(ansible_user_id) }}"
 desktop_vnc_geometry: "1920x1080"
 desktop_vnc_depth: 24
 desktop_vnc_display: 1
 desktop_vnc_password: "robotics"
+
+# Install Firefox from the Mozilla apt repository (real .deb) instead of
+# the Ubuntu snap shim, which does not work in VNC sessions. Required so
+# OAuth flows (GitHub sign-in in VS Code, etc.) can open a browser.
+desktop_install_firefox: true
