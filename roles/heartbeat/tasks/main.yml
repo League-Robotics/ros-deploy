@@ -30,15 +30,20 @@
     name: python3-colcon-common-extensions
     state: present
 
+- name: Check whether heartbeat install artifacts already exist
+  ansible.builtin.stat:
+    path: "{{ heartbeat_workspace_dir }}/install/heartbeat"
+  register: heartbeat_install_stat
+
 - name: Build heartbeat package with colcon
   ansible.builtin.shell: |
-    set -euo pipefail
+    set -eo pipefail
     source /opt/ros/{{ ros_version }}/setup.bash
     cd {{ heartbeat_workspace_dir }}
     colcon build --packages-select heartbeat --symlink-install
   args:
     executable: /bin/bash
-  when: heartbeat_sync is changed
+  when: heartbeat_sync is changed or not heartbeat_install_stat.stat.exists
   changed_when: true
 
 - name: Install overlay-sourcing profile snippet

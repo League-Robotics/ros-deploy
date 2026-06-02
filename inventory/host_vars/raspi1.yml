@@ -1,9 +1,0 @@
-# inventory/host_vars/raspi1.yml
-# Per-host overrides for a Raspberry Pi running 64-bit Ubuntu 22.04 + ROS 2.
-
-ros_version: humble
-ros_package_variant: ros-base
-
-# The Pi is arm64; Ansible detects this automatically via ansible_architecture.
-# You can force it here if needed:
-# ansible_architecture: aarch64

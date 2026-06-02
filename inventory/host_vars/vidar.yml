@@ -1,0 +1,6 @@
+# inventory/host_vars/vidar.yml
+# Per-host overrides for the `vidar` node (Ubuntu 24.04).
+# Ubuntu 24.04 → ROS 2 Kilted Kaiju.
+
+ros_version: kilted
+ros_package_variant: ros-base
