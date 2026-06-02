@@ -44,6 +44,7 @@ docker/
 scripts/
   bootstrap-ansible-user.sh  Shell wrapper: decrypts key → runs bootstrap.yml
   set-static-ip.sh           Configure a static IP on a remote host via SSH
+  ros-mac-shell.sh           SSH into the macvm VM with X11 → XQuartz (rviz/rqt)
 config/                      dotconfig tree (keys, secrets, env files)
   keys/ansible               SOPS-encrypted ansible private key
   keys/ansible.pub           Ansible public key (plaintext)
@@ -120,6 +121,15 @@ connection uses your own credentials.
 3. Optionally set a static IP: `./scripts/set-static-ip.sh -u <user> -i <ip> <hostname>`
 4. Bootstrap: `./scripts/bootstrap-ansible-user.sh -u <user> -K <hostname>`
 5. Deploy: `ansible-playbook playbooks/site.yml --limit <hostname>`
+
+### Running ROS on a Mac
+
+`macvm` is the ROS node on Eric's Mac: an **Ubuntu 24.04 VM in UTM with
+bridged networking**.  Bridged gives it a real LAN IP, so it joins the DDS
+domain like any physical node — containers/OrbStack are NAT-only and can't.
+The VM is created once via UTM's GUI, then onboarded with the **same** flow as
+any host (bootstrap → site.yml).  There is intentionally **no Mac-specific role
+or playbook**.  See README "ROS on a Mac (UTM)".  GUI: `scripts/ros-mac-shell.sh`.
 
 ### Change the ROS version on a host
 

@@ -1,0 +1,8 @@
+# inventory/host_vars/macvm.yml
+# Per-host overrides for `macvm` — the ROS node running on Eric's Mac inside a
+# UTM virtual machine (Ubuntu 24.04, bridged networking → real LAN IP).
+# Onboarded exactly like any other node; bridged net lets it join domain 42.
+
+ros_version: kilted            # Ubuntu 24.04 → ROS 2 Kilted Kaiju
+ros_package_variant: desktop   # full desktop install (rviz2, rqt) — robots use ros-base
+configure_xwindows: true       # enable the xwindows role so rviz2/rqt forward to XQuartz

@@ -16,7 +16,8 @@ SSH credentials and secrets are managed with
 | Raspberry Pi | 64-bit Ubuntu (arm64); detected automatically |
 | Docker | ROS runs in a container with `--network host` so it joins the same ROS network as physical nodes |
 | X Windows | SSH X11 forwarding configured so remote GUI apps render on your local screen |
-| Mac / emulation | Multi-arch Docker images via `buildx`; QEMU binfmt support on Linux hosts |
+| Mac (run a node) | ROS node on macOS via a UTM **bridged** Ubuntu 24.04 VM (`macvm`) — joins the fleet like a physical node. See "ROS on a Mac (UTM)" |
+| Multi-arch | Multi-arch Docker images via `buildx`; QEMU binfmt support on Linux hosts |
 | Network discovery | All nodes — bare-metal, VM, or container — share the same `ROS_DOMAIN_ID` and discover each other via DDS |
 | Ansible service account | Dedicated `ansible` OS user with its SSH key managed by dotconfig |
 
@@ -238,9 +239,62 @@ The `docker_ros.yml` playbook:
 
 ### macOS note
 
-Docker Desktop on macOS does **not** support `--network host`.  The best
-workaround is to run your Mac as a *control node* only (i.e., run Ansible
-from it but not deploy a ROS container on it), or to use a Linux VM.
+Docker Desktop **and** OrbStack on macOS are NAT-only — neither a container
+nor an OrbStack Linux machine can join the LAN's DDS multicast domain, so they
+**cannot** discover the physical robots.  Run a Mac ROS node in a UTM VM with
+**bridged** networking instead (see below).
+
+---
+
+## ROS on a Mac (UTM)
+
+To run a full ROS 2 node *on the Mac* that actually joins the robot fleet
+(domain 42, talking to vidar/agony/torture), use a **UTM** virtual machine with
+**bridged** networking.  Bridged gives the VM a real `192.168.1.x` DHCP lease,
+so it is a true LAN peer and DDS multicast discovery works — exactly like a
+physical node.  Containers / OrbStack (NAT) can't do this.
+
+Once the VM exists, it's **just another `ros_nodes` host** — the same
+`bootstrap` → `site.yml` flow used for every machine.  No special playbook.
+
+**1. Create the VM in UTM (one-time, GUI, ~10 min)**
+
+- New VM → **Virtualize** (Apple Virtualization, fast on Apple Silicon) → Linux.
+- Boot ISO: **Ubuntu Server 24.04 LTS arm64** (24.04 → ROS 2 Kilted).
+- Resources: **4 CPU / 8 GiB RAM / 60 GiB disk**.
+- **Network → Network Mode: Bridged** (bridged to `en0`).  ← the whole point.
+- In the Ubuntu installer: hostname `macvm`, create user **`jtl`** (matches the
+  robots' login convention), and enable **"Install OpenSSH server."**
+
+> Prefer rviz in a local window over X11 forwarding? Install the Ubuntu
+> **Desktop** ISO instead and run rviz2 directly in the UTM display — heavier
+> VM, no XQuartz needed.  Otherwise keep Server + the X11→XQuartz path below.
+
+**2. Onboard it like any node** (`inventory/host_vars/macvm.yml` already sets
+`ros_version: kilted`, `ros_package_variant: desktop`, `configure_xwindows: true`):
+
+```bash
+# Add macvm's bridged IP under [ros_nodes] in inventory/hosts.ini:
+#   macvm  ansible_host=192.168.1.<x>
+
+./scripts/bootstrap-ansible-user.sh -u jtl -K macvm   # create the ansible account
+ansible-playbook playbooks/site.yml --limit macvm     # common + ROS Kilted desktop + xwindows
+```
+
+**3. GUI shell from the Mac** (requires XQuartz, already on most setups):
+
+```bash
+./scripts/ros-mac-shell.sh            # GUI-ready shell (X11 → XQuartz)
+./scripts/ros-mac-shell.sh -- rviz2   # launch rviz2 directly
+./scripts/ros-mac-shell.sh -n         # headless shell, no XQuartz
+```
+
+**Verify fleet discovery:** run `ros2 run demo_nodes_cpp talker` on a robot,
+then on `macvm` `ROS_DOMAIN_ID=42 ros2 topic list` should show `/chatter`.
+
+> If `macvm` can't see the robots, double-check the VM's IP is `192.168.1.x`
+> (bridged) and **not** a NAT range — that's the #1 cause.  DHCP can also
+> reassign the IP across reboots; update the `ansible_host=` line if it changes.
 
 ---
 
