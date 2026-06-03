@@ -21,6 +21,13 @@
   roles:
     - heartbeat
 
+- name: Install and run ROS 2 cameras
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: cameras
+      when: install_cameras | default(false)
+
 - name: Configure X Windows forwarding
   hosts: ros_all
   become: true

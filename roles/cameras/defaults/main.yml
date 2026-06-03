@@ -1,0 +1,77 @@
+---
+# roles/cameras/defaults/main.yml
+# libcamera-based ROS 2 camera support (camera_ros). Designed for Raspberry Pi
+# CSI cameras on Ubuntu 24.04 (libcamera stack), works with any libcamera/V4L2
+# camera. Override `cameras_list` per host in inventory/host_vars/<host>.yml.
+
+# ROS camera packages. image_transport_plugins + compressed_image_transport
+# give a `.../image_raw/compressed` topic — important for viewing over the LAN
+# (e.g. from the Mac) without saturating the network with raw frames.
+cameras_apt_packages:
+  - "ros-{{ ros_version }}-camera-ros"
+  - "ros-{{ ros_version }}-camera-info-manager"
+  - "ros-{{ ros_version }}-image-transport"
+  - "ros-{{ ros_version }}-image-transport-plugins"
+  - "ros-{{ ros_version }}-compressed-image-transport"
+  - "ros-{{ ros_version }}-image-view"
+  - "ros-{{ ros_version }}-rqt-image-view"
+
+# Directory holding the generated launch file.
+cameras_config_dir: /opt/ros-cameras
+
+# ── Raspberry Pi libcamera (built from source) ────────────
+# camera_ros ships UPSTREAM libcamera, whose PiSP pipeline cannot acquire the
+# Raspberry Pi downstream kernel's CFE ("Unable to acquire a CFE instance").
+# On Pi 5 + Ubuntu, build the Raspberry Pi libcamera fork (matching the
+# linux-raspi kernel) and make camera_ros load it via LD_LIBRARY_PATH.
+# Enable per host (e.g. vidar) with `cameras_build_rpi_libcamera: true`.
+cameras_build_rpi_libcamera: false
+rpi_libcamera_prefix: /opt/rpi-libcamera
+rpi_libcamera_src: /opt/src
+# Profile snippet that prepends the Pi libcamera for interactive shells. Named
+# to sort AFTER ros_env.sh / ros_overlay.sh so it wins the LD_LIBRARY_PATH race.
+cameras_env_profile_path: /etc/profile.d/zz-ros-cameras.sh
+# Pin libcamera to a 0.5.x tag so its SONAME (libcamera.so.0.5) matches the
+# ros-*-camera-ros build it must substitute for. libpisp tracks its default branch.
+rpi_libcamera_version: "v0.5.2+rpt20250903"
+rpi_libcamera_build_deps:
+  - build-essential
+  - meson
+  - ninja-build
+  - pkg-config
+  - git
+  - python3-yaml
+  - python3-ply
+  - python3-jinja2
+  - libyaml-dev
+  - libssl-dev
+  - openssl
+  - libudev-dev
+  - libboost-dev
+  - nlohmann-json3-dev
+  - libevent-dev
+  - libdrm-dev
+
+# Run the cameras as a systemd service (auto-start on boot, restart on failure).
+cameras_systemd_service: true
+cameras_service_name: ros-cameras
+
+# OS user the camera service runs as. Must be able to access camera devices;
+# the role adds it to `cameras_device_groups`.
+cameras_user: "{{ ansible_managed_user | default('ansible') }}"
+cameras_device_groups:
+  - video
+  - render
+
+# Cameras to launch — one camera_ros camera_node per entry.
+#   namespace : topic namespace → /<namespace>/image_raw, /camera_info, ...
+#   camera    : libcamera camera index (0, 1, ...) or string camera id
+#   width/height : requested capture size (camera_ros picks the closest mode)
+#   frame_id  : TF frame stamped on the images
+# Default is a single camera; hosts with more (e.g. vidar) override this list.
+cameras_list:
+  - namespace: camera0
+    camera: 0
+    width: 1280
+    height: 720
+    frame_id: camera0_optical_frame

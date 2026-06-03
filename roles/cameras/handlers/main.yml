@@ -1,0 +1,12 @@
+---
+# roles/cameras/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart cameras service
+  ansible.builtin.systemd:
+    name: "{{ cameras_service_name }}"
+    state: restarted
+  when: cameras_systemd_service | bool

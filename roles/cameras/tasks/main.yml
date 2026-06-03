@@ -1,0 +1,71 @@
+---
+# roles/cameras/tasks/main.yml
+# Installs camera_ros (libcamera-based ROS 2 camera node) plus image_transport
+# and compressed transport, then runs one camera_node per configured camera.
+# camera_ros publishes <ns>/image_raw, <ns>/image_raw/compressed and
+# <ns>/camera_info so peers (e.g. the Mac) can view the streams over the LAN.
+
+- name: Install ROS camera packages (camera_ros + image transport)
+  ansible.builtin.apt:
+    name: "{{ cameras_apt_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# On Pi 5 + Ubuntu, build the Raspberry Pi libcamera fork so camera_ros can
+# actually acquire the cameras (upstream libcamera can't drive the Pi CFE).
+- name: Build Raspberry Pi libcamera (Pi hosts only)
+  ansible.builtin.include_tasks: rpi_libcamera.yml
+  when: cameras_build_rpi_libcamera | default(false)
+
+- name: Add camera service user to device groups (video, render)
+  ansible.builtin.user:
+    name: "{{ cameras_user }}"
+    groups: "{{ cameras_device_groups }}"
+    append: true
+
+- name: Ensure camera config directory exists
+  ansible.builtin.file:
+    path: "{{ cameras_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy interactive libcamera-override profile snippet
+  ansible.builtin.template:
+    src: zz-ros-cameras.sh.j2
+    dest: "{{ cameras_env_profile_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: cameras_build_rpi_libcamera | default(false)
+
+- name: Deploy camera launch file
+  ansible.builtin.template:
+    src: cameras.launch.py.j2
+    dest: "{{ cameras_config_dir }}/cameras.launch.py"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart cameras service
+
+- name: Deploy cameras systemd unit
+  ansible.builtin.template:
+    src: ros-cameras.service.j2
+    dest: "/etc/systemd/system/{{ cameras_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  when: cameras_systemd_service | bool
+  notify:
+    - Reload systemd
+    - Restart cameras service
+
+- name: Enable and start cameras service
+  ansible.builtin.systemd:
+    name: "{{ cameras_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: cameras_systemd_service | bool

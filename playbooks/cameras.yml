@@ -1,0 +1,15 @@
+---
+# playbooks/cameras.yml
+# Install libcamera-based ROS 2 camera support (camera_ros) and run the
+# configured cameras as a systemd service.
+# Run: ansible-playbook playbooks/cameras.yml --limit vidar
+#
+# Enable per host with `install_cameras: true` and a `cameras_list` override
+# in inventory/host_vars/<host>.yml.
+
+- name: Install and run ROS 2 cameras
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: cameras
+      when: install_cameras | default(false)

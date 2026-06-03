@@ -1,0 +1,29 @@
+# {{ cameras_config_dir }}/cameras.launch.py
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# Starts one camera_ros camera_node per camera in `cameras_list`.
+# Each node publishes within its namespace:
+#   /<namespace>/image_raw            (sensor_msgs/Image)
+#   /<namespace>/image_raw/compressed (sensor_msgs/CompressedImage — for LAN viewing)
+#   /<namespace>/camera_info          (sensor_msgs/CameraInfo)
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    return LaunchDescription([
+{% for cam in cameras_list %}
+        Node(
+            package="camera_ros",
+            executable="camera_node",
+            namespace="{{ cam.namespace }}",
+            name="camera",
+            parameters=[{
+                "camera": {{ cam.camera }},
+                "width": {{ cam.width | default(1280) }},
+                "height": {{ cam.height | default(720) }},
+                "frame_id": "{{ cam.frame_id | default(cam.namespace ~ '_optical_frame') }}",
+            }],
+            output="screen",
+        ),
+{% endfor %}
+    ])

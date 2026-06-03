@@ -35,6 +35,10 @@ roles/
   ros/                       ROS 2 installation dispatcher
     tasks/install_humble.yml   Ubuntu 22.04, ROS 2 Humble
     tasks/install_kilted.yml   Ubuntu 24.04, ROS 2 Kilted Kaiju
+  cameras/                   camera_ros (libcamera) + image transport; one
+                             camera_node per camera as a systemd service.
+                             On Pi 5/Ubuntu, builds the Raspberry Pi libcamera
+                             fork (cameras_build_rpi_libcamera) so the CFE works.
   ros_docker/                docker-compose + systemd for containerised ROS
   docker/                    Docker CE installation
   xwindows/                  sshd X11Forwarding + xauth + optional Xvfb

@@ -225,6 +225,50 @@ This installs Xvfb and creates a systemd service on `:99`.  Set
 
 ---
 
+## Cameras
+
+The `cameras` role installs [`camera_ros`](https://github.com/christianrauch/camera_ros)
+(libcamera-based) plus image-transport (incl. compressed) and runs one
+`camera_node` per camera, publishing on the shared `ROS_DOMAIN_ID` so any
+node — including the Mac — can view the streams.
+
+Enable per host in `inventory/host_vars/<host>.yml`:
+
+```yaml
+install_cameras: true
+cameras_build_rpi_libcamera: true   # Raspberry Pi 5 / CSI cameras (see note)
+cameras_list:
+  - { namespace: camera0, camera: 0, width: 1280, height: 720, frame_id: camera0_optical_frame }
+  - { namespace: camera1, camera: 1, width: 1280, height: 720, frame_id: camera1_optical_frame }
+```
+
+Deploy: `ansible-playbook playbooks/cameras.yml --limit <host>` (also part of
+`site.yml`). A `ros-cameras` systemd service runs the cameras on boot.
+Published topics per camera: `/<ns>/camera/image_raw`,
+`/<ns>/camera/image_raw/compressed`, `/<ns>/camera/camera_info`.
+
+### Raspberry Pi 5 note (important)
+
+`camera_ros` bundles **upstream** libcamera, whose PiSP pipeline cannot acquire
+the Raspberry Pi downstream kernel's CFE on Ubuntu (`Unable to acquire a CFE
+instance` → "no cameras available"). With `cameras_build_rpi_libcamera: true`
+the role builds the **Raspberry Pi libcamera fork** (+ `libpisp`, pinned to a
+0.5.x tag matching `camera_ros`'s `libcamera.so.0.5`) into `/opt/rpi-libcamera`
+and makes `camera_ros` load it via `LD_LIBRARY_PATH` (in the systemd unit and a
+`/etc/profile.d/zz-ros-cameras.sh` snippet). The first build compiles libcamera
+on the Pi (~minutes); subsequent runs skip it. `vidar` (Pi 5, two IMX296
+cameras) uses this.
+
+### Viewing a camera (e.g. from the Mac `macvm`)
+
+```bash
+# On any node on domain 42 (rqt_image_view ships with the desktop variant):
+ros2 run rqt_image_view rqt_image_view
+# choose /camera0/camera/image_raw/compressed   (compressed = network-friendly)
+```
+
+---
+
 ## Docker setup
 
 The `docker_ros.yml` playbook:

@@ -4,3 +4,23 @@
 
 ros_version: kilted
 ros_package_variant: ros-base
+
+# ── Cameras ───────────────────────────────────────────────
+# vidar is a Raspberry Pi 5 with two CSI cameras (libcamera). Install
+# camera_ros and run one node per camera. Topics are published under
+# /camera0/* and /camera1/* on ROS_DOMAIN_ID 42 for fleet-wide viewing.
+install_cameras: true
+# Pi 5 + Ubuntu: build the Raspberry Pi libcamera fork so camera_ros can drive
+# the CSI cameras (upstream libcamera can't acquire the Pi CFE).
+cameras_build_rpi_libcamera: true
+cameras_list:
+  - namespace: camera0
+    camera: 0
+    width: 1280
+    height: 720
+    frame_id: camera0_optical_frame
+  - namespace: camera1
+    camera: 1
+    width: 1280
+    height: 720
+    frame_id: camera1_optical_frame

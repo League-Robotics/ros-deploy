@@ -37,6 +37,12 @@ install_docker: false
 # Whether to run the ROS service inside Docker
 ros_in_docker: false
 
+# ── Cameras ───────────────────────────────────────────────
+# Whether to install ROS camera support (camera_ros / libcamera) and run
+# the cameras listed in `cameras_list`. Enable + define cameras per host in
+# inventory/host_vars/<host>.yml.
+install_cameras: false
+
 # Docker image tags used in docker-compose templates
 ros_humble_image: "ros:humble-ros-base"
 ros_kilted_image: "ros:kilted-ros-base"

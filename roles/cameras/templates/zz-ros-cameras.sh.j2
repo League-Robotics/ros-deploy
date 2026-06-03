@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# {{ cameras_env_profile_path }}
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# Makes `ros2 run camera_ros ...` use the Raspberry Pi libcamera build (which
+# can drive the Pi CFE) instead of the upstream libcamera bundled with
+# camera_ros. Sorted after ros_env.sh so this LD_LIBRARY_PATH entry wins.
+if [ -d "{{ rpi_libcamera_prefix }}/lib" ]; then
+  export LD_LIBRARY_PATH="{{ rpi_libcamera_prefix }}/lib:${LD_LIBRARY_PATH}"
+fi

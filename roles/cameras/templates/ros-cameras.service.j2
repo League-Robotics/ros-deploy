@@ -1,0 +1,25 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=ROS {{ ros_version }} cameras (camera_ros / libcamera)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ cameras_user }}
+# systemd does not read /etc/profile.d, so set the ROS env explicitly
+# (mirrors /etc/profile.d/ros_env.sh) and source the ROS 2 setup in ExecStart.
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+{% if cameras_build_rpi_libcamera | default(false) %}
+# Prepend the Raspberry Pi libcamera build AFTER sourcing ROS so it takes
+# precedence over the upstream libcamera bundled with camera_ros.
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && export LD_LIBRARY_PATH={{ rpi_libcamera_prefix }}/lib:$LD_LIBRARY_PATH && exec ros2 launch {{ cameras_config_dir }}/cameras.launch.py'
+{% else %}
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec ros2 launch {{ cameras_config_dir }}/cameras.launch.py'
+{% endif %}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

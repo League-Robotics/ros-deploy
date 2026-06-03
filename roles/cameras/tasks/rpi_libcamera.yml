@@ -1,0 +1,72 @@
+---
+# roles/cameras/tasks/rpi_libcamera.yml
+# Build the Raspberry Pi libcamera fork (+ libpisp) from source into
+# {{ rpi_libcamera_prefix }} so camera_ros can use a libcamera whose PiSP
+# pipeline matches the Raspberry Pi downstream kernel CFE. The upstream
+# libcamera bundled with ros-*-camera-ros fails with "Unable to acquire a
+# CFE instance" on Pi 5 + linux-raspi.
+#
+# camera_ros loads this build at runtime via LD_LIBRARY_PATH (see the systemd
+# unit and the ros_cameras profile snippet). The built libcamera.so SONAME is
+# 0.5, matching the ros-*-camera-ros it substitutes for.
+
+- name: Install build dependencies for Raspberry Pi libcamera
+  ansible.builtin.apt:
+    name: "{{ rpi_libcamera_build_deps }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check whether Pi libcamera is already built
+  ansible.builtin.stat:
+    path: "{{ rpi_libcamera_prefix }}/lib/libcamera.so.0.5"
+  register: _rpi_libcamera_so
+
+- name: Build Raspberry Pi libcamera from source
+  when: not _rpi_libcamera_so.stat.exists
+  block:
+    - name: Clone libpisp (Raspberry Pi PiSP support library)
+      ansible.builtin.git:
+        repo: https://github.com/raspberrypi/libpisp.git
+        dest: "{{ rpi_libcamera_src }}/libpisp"
+        depth: 1
+        version: HEAD
+
+    - name: Clone Raspberry Pi libcamera fork
+      ansible.builtin.git:
+        repo: https://github.com/raspberrypi/libcamera.git
+        dest: "{{ rpi_libcamera_src }}/libcamera"
+        version: "{{ rpi_libcamera_version }}"
+
+    - name: Build and install libpisp
+      ansible.builtin.shell: |
+        set -eo pipefail
+        cd {{ rpi_libcamera_src }}/libpisp
+        rm -rf build
+        meson setup build --prefix={{ rpi_libcamera_prefix }} --libdir=lib --buildtype=release
+        ninja -C build
+        ninja -C build install
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Build and install Raspberry Pi libcamera (with PiSP pipeline)
+      # libpisp's pkg-config Cflags point at <prefix>/include/libpisp, but the
+      # PiSP pipeline #includes "libpisp/backend/backend.hpp", so add <prefix>/include.
+      ansible.builtin.shell: |
+        set -eo pipefail
+        cd {{ rpi_libcamera_src }}/libcamera
+        export PKG_CONFIG_PATH={{ rpi_libcamera_prefix }}/lib/pkgconfig
+        rm -rf build
+        meson setup build --prefix={{ rpi_libcamera_prefix }} --libdir=lib --buildtype=release \
+          -Dpipelines=rpi/vc4,rpi/pisp \
+          -Dcpp_args=-I{{ rpi_libcamera_prefix }}/include \
+          -Dc_args=-I{{ rpi_libcamera_prefix }}/include \
+          -Dgstreamer=disabled -Dtest=false -Ddocumentation=disabled \
+          -Dlc-compliance=disabled -Dcam=enabled -Dpycamera=disabled -Dv4l2=true
+        ninja -C build
+        ninja -C build install
+      args:
+        executable: /bin/bash
+      changed_when: true
+      notify: Restart cameras service
