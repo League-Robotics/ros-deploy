@@ -259,13 +259,26 @@ and makes `camera_ros` load it via `LD_LIBRARY_PATH` (in the systemd unit and a
 on the Pi (~minutes); subsequent runs skip it. `vidar` (Pi 5, two IMX296
 cameras) uses this.
 
-### Viewing a camera (e.g. from the Mac `macvm`)
+### Viewing cameras on your Mac (via X11 to XQuartz)
+
+Run the viewer on any ROS node on the LAN (it subscribes to the camera topics —
+no capture needed) and forward its window to your Mac's XQuartz over SSH X11:
 
 ```bash
-# On any node on domain 42 (rqt_image_view ships with the desktop variant):
-ros2 run rqt_image_view rqt_image_view
-# choose /camera0/camera/image_raw/compressed   (compressed = network-friendly)
+./scripts/view-cameras.sh                              # rqt_image_view on agony (pick topic)
+./scripts/view-cameras.sh -t /camera0/camera/image_raw # view camera0 directly (image_view)
+./scripts/view-cameras.sh -H torture -u eric           # different node / login user
 ```
+
+`view-cameras.sh` ensures XQuartz is running, resolves the node's IP from the
+inventory, and `ssh -Y`'s in to launch the viewer. The node needs the viewer
+packages (`ros-<distro>-rqt-image-view`, `ros-<distro>-image-view`,
+`ros-<distro>-image-transport-plugins`, `ros-<distro>-compressed-image-transport`)
+— included in the `desktop` ROS variant, or install them directly. Choose
+`/camera0/camera/image_raw/compressed` (compressed = network-friendly).
+
+Alternatively, on a node with a local display just run
+`ros2 run rqt_image_view rqt_image_view` directly.
 
 ---
 
