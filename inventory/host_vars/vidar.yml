@@ -13,6 +13,9 @@ install_cameras: true
 # Pi 5 + Ubuntu: build the Raspberry Pi libcamera fork so camera_ros can drive
 # the CSI cameras (upstream libcamera can't acquire the Pi CFE).
 cameras_build_rpi_libcamera: true
+# Serve the cameras as MJPEG over HTTP (view in a browser, e.g. from the Mac):
+#   http://vidar:8080/stream_viewer?topic=/camera0/camera/image_raw
+cameras_web_video_server: true
 cameras_list:
   - namespace: camera0
     camera: 0

@@ -10,3 +10,9 @@
     name: "{{ cameras_service_name }}"
     state: restarted
   when: cameras_systemd_service | bool
+
+- name: Restart web video server
+  ansible.builtin.systemd:
+    name: "{{ cameras_web_video_service_name }}"
+    state: restarted
+  when: cameras_web_video_server | bool

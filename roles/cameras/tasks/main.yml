@@ -69,3 +69,32 @@
     state: started
     daemon_reload: true
   when: cameras_systemd_service | bool
+
+# Optional: serve the camera topics as MJPEG over HTTP (browser viewing).
+- name: Install web_video_server
+  ansible.builtin.apt:
+    name: "ros-{{ ros_version }}-web-video-server"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: cameras_web_video_server | bool
+
+- name: Deploy web_video_server systemd unit
+  ansible.builtin.template:
+    src: web-video-server.service.j2
+    dest: "/etc/systemd/system/{{ cameras_web_video_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  when: cameras_web_video_server | bool
+  notify:
+    - Reload systemd
+    - Restart web video server
+
+- name: Enable and start web_video_server
+  ansible.builtin.systemd:
+    name: "{{ cameras_web_video_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: cameras_web_video_server | bool

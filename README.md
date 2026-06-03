@@ -259,7 +259,33 @@ and makes `camera_ros` load it via `LD_LIBRARY_PATH` (in the systemd unit and a
 on the Pi (~minutes); subsequent runs skip it. `vidar` (Pi 5, two IMX296
 cameras) uses this.
 
+### Viewing cameras on your Mac (recommended: web_video_server)
+
+The most reliable way to view cameras on a Mac is **`web_video_server`** — it
+serves the camera topics as MJPEG over HTTP, so you watch them in a **browser**
+(no X11, no XQuartz). Enable it on the camera host:
+
+```yaml
+# inventory/host_vars/<host>.yml
+cameras_web_video_server: true        # serves on :8080 (cameras_web_video_port)
+```
+
+Then open in your Mac browser:
+
+```
+http://<host>:8080/                                              # index of streams
+http://<host>:8080/stream_viewer?topic=/camera0/camera/image_raw # live view
+```
+
+> Note: `web_video_server` discovers publishers at startup — if you (re)start
+> the cameras, restart `web-video-server` too so it re-subscribes.
+
 ### Viewing cameras on your Mac (via X11 to XQuartz)
+
+> ⚠️ rqt over XQuartz is unreliable: Qt5 frequently renders an all-black window
+> over SSH X11 forwarding to XQuartz (no MIT-SHM / no usable GLX). Prefer
+> `web_video_server` above. The X11 path below works for simpler X apps.
+
 
 Run the viewer on any ROS node on the LAN (it subscribes to the camera topics —
 no capture needed) and forward its window to your Mac's XQuartz over SSH X11:

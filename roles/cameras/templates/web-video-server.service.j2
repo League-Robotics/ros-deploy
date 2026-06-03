@@ -1,0 +1,18 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=ROS {{ ros_version }} web_video_server (camera streams as MJPEG over HTTP)
+After=network-online.target {{ cameras_service_name }}.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as a real user so $HOME is set (ROS needs it to resolve its log dir).
+User={{ cameras_user }}
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec ros2 run web_video_server web_video_server --ros-args -p port:={{ cameras_web_video_port }} -p address:=0.0.0.0'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

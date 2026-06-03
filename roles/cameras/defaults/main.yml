@@ -56,6 +56,13 @@ rpi_libcamera_build_deps:
 cameras_systemd_service: true
 cameras_service_name: ros-cameras
 
+# Serve the camera topics as MJPEG over HTTP via web_video_server. This is the
+# robust way to view cameras on a Mac (browser, no X11/XQuartz). View at
+# http://<host>:<port>/stream_viewer?topic=/camera0/camera/image_raw
+cameras_web_video_server: false
+cameras_web_video_port: 8080
+cameras_web_video_service_name: web-video-server
+
 # OS user the camera service runs as. Must be able to access camera devices;
 # the role adds it to `cameras_device_groups`.
 cameras_user: "{{ ansible_managed_user | default('ansible') }}"
