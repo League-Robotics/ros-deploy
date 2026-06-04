@@ -1,7 +1,8 @@
 [Unit]
 # Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
 Description=ROS {{ ros_version }} web_video_server (camera streams as MJPEG over HTTP)
-After=network-online.target {{ cameras_service_name }}.service
+After=network-online.target {{ cameras_service_name }}.service{% if cameras_color_relay | default(false) %} {{ cameras_color_relay_service_name }}.service{% endif %}
+
 Wants=network-online.target
 # Restart together with the cameras so we never hold stale subscriptions to
 # publishers that went away when ros-cameras restarted.

@@ -16,6 +16,9 @@ cameras_build_rpi_libcamera: true
 # Serve the cameras as MJPEG over HTTP (view in a browser, e.g. from the Mac):
 #   http://vidar:8080/stream_viewer?topic=/camera0/camera/image_raw
 cameras_web_video_server: true
+# camera_ros swaps R/B vs its encoding label; relay corrects it to image_color.
+# View the image_color topics (e.g. /camera0/camera/image_color).
+cameras_color_relay: true
 # Auto-restart the cameras if they stall (camera_ros can stop publishing
 # without crashing); web_video_server restarts with them via PartOf.
 cameras_watchdog: true

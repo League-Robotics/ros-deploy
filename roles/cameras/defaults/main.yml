@@ -63,6 +63,12 @@ cameras_web_video_server: false
 cameras_web_video_port: 8080
 cameras_web_video_service_name: web-video-server
 
+# Work around camera_ros publishing images with R/B swapped vs the encoding
+# label: a relay republishes each <ns>/camera/image_raw as <ns>/camera/image_color
+# with the channels corrected. View the *image_color* topics when enabled.
+cameras_color_relay: false
+cameras_color_relay_service_name: camera-color-relay
+
 # Watchdog: camera_ros/libcamera can stall (process stays alive but stops
 # publishing) — systemd can't detect that. This timer probes the first camera
 # topic and restarts the camera service (web_video_server follows via PartOf)

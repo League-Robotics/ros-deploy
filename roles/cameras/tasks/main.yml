@@ -70,6 +70,36 @@
     daemon_reload: true
   when: cameras_systemd_service | bool
 
+# Optional: republish images with R/B corrected (camera_ros mislabel workaround).
+- name: Deploy camera colour relay script
+  ansible.builtin.copy:
+    src: camera_color_relay.py
+    dest: "{{ cameras_config_dir }}/camera_color_relay.py"
+    owner: root
+    group: root
+    mode: "0755"
+  when: cameras_color_relay | bool
+
+- name: Deploy camera colour relay systemd unit
+  ansible.builtin.template:
+    src: camera-color-relay.service.j2
+    dest: "/etc/systemd/system/{{ cameras_color_relay_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  when: cameras_color_relay | bool
+  notify:
+    - Reload systemd
+    - Restart camera colour relay
+
+- name: Enable and start camera colour relay
+  ansible.builtin.systemd:
+    name: "{{ cameras_color_relay_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: cameras_color_relay | bool
+
 # Optional: serve the camera topics as MJPEG over HTTP (browser viewing).
 - name: Install web_video_server
   ansible.builtin.apt:

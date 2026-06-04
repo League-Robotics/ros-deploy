@@ -273,9 +273,16 @@ cameras_web_video_server: true        # serves on :8080 (cameras_web_video_port)
 Then open in your Mac browser:
 
 ```
-http://<host>:8080/                                              # index of streams
-http://<host>:8080/stream_viewer?topic=/camera0/camera/image_raw # live view
+http://<host>:8080/                                                # index of streams
+http://<host>:8080/stream_viewer?topic=/camera0/camera/image_color # live view (colour-corrected)
 ```
+
+> **Colour (R/B swap):** camera_ros on Pi 5 publishes image pixels with red and
+> blue swapped relative to the encoding label, so `image_raw` shows red as blue.
+> With `cameras_color_relay: true` a relay republishes each camera as
+> `…/image_color` with the channels corrected (subscribes BEST_EFFORT, publishes
+> RELIABLE). **View the `image_color` topics.** The relay starts before
+> web_video_server so the topics are discovered at startup.
 
 > Note: `web-video-server` is `PartOf` the camera service, so restarting the
 > cameras restarts it too (it must re-discover publishers).
