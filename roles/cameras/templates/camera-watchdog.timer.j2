@@ -1,0 +1,11 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=Periodically probe the cameras and restart them if frames have stopped
+
+[Timer]
+OnBootSec={{ cameras_watchdog_interval }}
+OnUnitActiveSec={{ cameras_watchdog_interval }}
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target

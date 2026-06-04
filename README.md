@@ -277,8 +277,15 @@ http://<host>:8080/                                              # index of stre
 http://<host>:8080/stream_viewer?topic=/camera0/camera/image_raw # live view
 ```
 
-> Note: `web_video_server` discovers publishers at startup — if you (re)start
-> the cameras, restart `web-video-server` too so it re-subscribes.
+> Note: `web-video-server` is `PartOf` the camera service, so restarting the
+> cameras restarts it too (it must re-discover publishers).
+
+> **Throughput:** two cameras publishing raw at 1280×720/30 can starve
+> `camera_ros`/libcamera buffers on a Pi 5 and the frame rate collapses to
+> <1 Hz after a few minutes. 640×480 holds a steady 30 Hz on both. If you need
+> higher resolution, drop the frame rate or run one camera. A rate-aware
+> watchdog (`cameras_watchdog`) restarts the cameras if the rate falls below
+> `cameras_watchdog_min_rate`.
 
 ### Viewing cameras on your Mac (via X11 to XQuartz)
 

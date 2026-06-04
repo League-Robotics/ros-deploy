@@ -3,6 +3,10 @@
 Description=ROS {{ ros_version }} web_video_server (camera streams as MJPEG over HTTP)
 After=network-online.target {{ cameras_service_name }}.service
 Wants=network-online.target
+# Restart together with the cameras so we never hold stale subscriptions to
+# publishers that went away when ros-cameras restarted.
+PartOf={{ cameras_service_name }}.service
+BindsTo={{ cameras_service_name }}.service
 
 [Service]
 Type=simple

@@ -1,0 +1,8 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=Camera watchdog — restart {{ cameras_service_name }} if frames stop
+After={{ cameras_service_name }}.service
+
+[Service]
+Type=oneshot
+ExecStart={{ cameras_config_dir }}/camera-watchdog.sh

@@ -98,3 +98,33 @@
     state: started
     daemon_reload: true
   when: cameras_web_video_server | bool
+
+# Watchdog: restart the cameras automatically if they stall (no frames).
+- name: Deploy camera watchdog script
+  ansible.builtin.template:
+    src: camera-watchdog.sh.j2
+    dest: "{{ cameras_config_dir }}/camera-watchdog.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  when: cameras_watchdog | bool
+
+- name: Deploy camera watchdog service + timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - camera-watchdog.service
+    - camera-watchdog.timer
+  when: cameras_watchdog | bool
+
+- name: Enable and start the camera watchdog timer
+  ansible.builtin.systemd:
+    name: camera-watchdog.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: cameras_watchdog | bool

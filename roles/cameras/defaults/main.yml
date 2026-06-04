@@ -63,6 +63,15 @@ cameras_web_video_server: false
 cameras_web_video_port: 8080
 cameras_web_video_service_name: web-video-server
 
+# Watchdog: camera_ros/libcamera can stall (process stays alive but stops
+# publishing) — systemd can't detect that. This timer probes the first camera
+# topic and restarts the camera service (web_video_server follows via PartOf)
+# if no frames are flowing.
+cameras_watchdog: false
+cameras_watchdog_interval: 90      # seconds between checks
+cameras_watchdog_probe_secs: 8     # how long to sample the topic before deciding
+cameras_watchdog_min_rate: 3       # restart if publish rate drops below this (Hz)
+
 # OS user the camera service runs as. Must be able to access camera devices;
 # the role adds it to `cameras_device_groups`.
 cameras_user: "{{ ansible_managed_user | default('ansible') }}"

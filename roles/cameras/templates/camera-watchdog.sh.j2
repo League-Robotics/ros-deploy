@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# {{ cameras_config_dir }}/camera-watchdog.sh
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# camera_ros/libcamera can stall (the process stays alive but stops publishing
+# frames), which systemd cannot detect. This probes the first camera topic and,
+# if no frames are flowing, restarts the camera service. web_video_server is
+# PartOf that service, so it restarts too and re-discovers the fresh publishers.
+set -uo pipefail
+
+source /opt/ros/{{ ros_version }}/setup.bash
+export ROS_DOMAIN_ID={{ ros_domain_id }}
+export HOME=/root ROS_LOG_DIR=/tmp/camera-watchdog
+
+TOPIC="/{{ cameras_list[0].namespace }}/camera/image_raw"
+MIN_RATE={{ cameras_watchdog_min_rate }}
+
+# Sample the publish rate. camera_ros can not only stop but also *degrade* to a
+# fraction of a Hz, so require a minimum rate rather than just "any frames".
+RATE="$(timeout {{ cameras_watchdog_probe_secs }} ros2 topic hz "${TOPIC}" 2>/dev/null \
+        | grep -oE 'average rate: [0-9.]+' | grep -oE '[0-9.]+' | tail -1)"
+
+if [ -n "${RATE}" ] && awk "BEGIN{exit !(${RATE} >= ${MIN_RATE})}"; then
+  exit 0   # healthy
+fi
+
+logger -t camera-watchdog "camera rate ${RATE:-none} < ${MIN_RATE} Hz on ${TOPIC}; restarting {{ cameras_service_name }}"
+systemctl restart {{ cameras_service_name }}
