@@ -22,6 +22,11 @@ def generate_launch_description():
                 "width": {{ cam.width | default(1280) }},
                 "height": {{ cam.height | default(720) }},
                 "frame_id": "{{ cam.frame_id | default(cam.namespace ~ '_optical_frame') }}",
+{% if cam.format is defined %}
+                # Pixel format. XRGB8888 (the auto-pick) comes out as bgra8 with
+                # R/B swapped through web_video_server; RGB888 gives correct colour.
+                "format": "{{ cam.format }}",
+{% endif %}
             }],
             output="screen",
         ),

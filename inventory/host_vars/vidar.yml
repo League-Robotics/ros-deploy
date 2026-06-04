@@ -24,9 +24,11 @@ cameras_list:
     camera: 0
     width: 640
     height: 480
+    format: RGB888
     frame_id: camera0_optical_frame
   - namespace: camera1
     camera: 1
     width: 640
     height: 480
+    format: RGB888
     frame_id: camera1_optical_frame
