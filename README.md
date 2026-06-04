@@ -280,12 +280,13 @@ http://<host>:8080/stream_viewer?topic=/camera0/camera/image_raw # live view
 > Note: `web-video-server` is `PartOf` the camera service, so restarting the
 > cameras restarts it too (it must re-discover publishers).
 
-> **Throughput:** two cameras publishing raw at 1280×720/30 can starve
-> `camera_ros`/libcamera buffers on a Pi 5 and the frame rate collapses to
-> <1 Hz after a few minutes. 640×480 holds a steady 30 Hz on both. If you need
-> higher resolution, drop the frame rate or run one camera. A rate-aware
-> watchdog (`cameras_watchdog`) restarts the cameras if the rate falls below
-> `cameras_watchdog_min_rate`.
+> **Throughput / QoS:** two cameras publishing raw at 1280×720/30 collapse to
+> <1 Hz on a Pi 5; 640×480 holds a steady 30 Hz on both. `camera_ros` also
+> publishes images **RELIABLE, depth 1** (and ignores `qos_overrides`), so a
+> stalled or abandoned subscriber can block the publisher and stall capture.
+> The rate-aware watchdog (`cameras_watchdog`, restart below
+> `cameras_watchdog_min_rate` Hz) recovers from that automatically. For higher
+> resolution, drop the frame rate or run a single camera.
 
 ### Viewing cameras on your Mac (via X11 to XQuartz)
 

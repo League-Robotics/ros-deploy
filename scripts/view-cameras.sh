@@ -71,6 +71,11 @@ if [[ -z "${DISPLAY:-}" ]]; then
 fi
 [[ -n "${DISPLAY:-}" ]] || echo "WARNING: DISPLAY is empty; GUI forwarding may not work." >&2
 
+# ── Qt-over-remote-X11 fixes ──────────────────────────────────────────────────
+# SSH X11 forwarding has no MIT shared memory and XQuartz has no usable GLX, so
+# Qt apps (rqt) render an all-black window unless these are disabled.
+QT_ENV='export QT_X11_NO_MITSHM=1 QT_XCB_GL_INTEGRATION=none LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=xcb;'
+
 # ── Build the remote viewer command ───────────────────────────────────────────
 # Login shell (-l) sources /etc/profile.d/ros_env.sh → ROS 2 + ROS_DOMAIN_ID.
 if [[ -n "${TOPIC}" ]]; then
@@ -87,4 +92,4 @@ SSH_OPTS=(-Y -o StrictHostKeyChecking=accept-new)
 echo "==> Launching viewer on ${SSH_USER}@${TARGET} (X11 → XQuartz)"
 echo "    ${REMOTE}"
 [[ -n "${TOPIC}" ]] || echo "    (pick a topic, e.g. /camera0/camera/image_raw/compressed, from the dropdown)"
-exec ssh "${SSH_OPTS[@]}" "${SSH_USER}@${TARGET}" "bash -lc '${REMOTE}'"
+exec ssh "${SSH_OPTS[@]}" "${SSH_USER}@${TARGET}" "bash -lc '${QT_ENV} ${REMOTE}'"
