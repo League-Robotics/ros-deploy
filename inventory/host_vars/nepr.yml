@@ -1,0 +1,8 @@
+# inventory/host_vars/nepr.yml
+# Per-host overrides for `nepr` — Raspberry Pi 4 Model B, Ubuntu 24.04.
+# Ubuntu 24.04 → ROS 2 Kilted Kaiju. No cameras.
+# Role: drives a robot over a serial port; serial libraries / a Python module
+# will be added in a later configuration step.
+
+ros_version: kilted
+ros_package_variant: ros-base

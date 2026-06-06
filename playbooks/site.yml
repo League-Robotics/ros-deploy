@@ -35,6 +35,13 @@
     - role: xwindows
       when: configure_xwindows | default(false)
 
+- name: Install XFCE + VNC desktop (standard on Raspberry Pis)
+  hosts: ros_all
+  become: true
+  roles:
+    - role: desktop
+      when: configure_desktop | default(false)
+
 - name: Install Docker and deploy ROS containers
   hosts: ros_docker_hosts
   become: true

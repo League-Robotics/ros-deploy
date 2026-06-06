@@ -1,0 +1,11 @@
+# inventory/group_vars/raspberry_pis.yml
+# Variables shared by every Raspberry Pi in the fleet.
+
+# Standard for all Pis: run a VNC desktop (XFCE + TigerVNC on aarch64) so any
+# Pi can be reached graphically. The desktop role auto-selects TigerVNC on
+# aarch64. VNC listens on display :1 (port 5901), password `desktop_vnc_password`.
+configure_desktop: true
+
+# Account that owns the VNC session. Defaults to the `ansible` service account
+# (always present); override in a host's host_vars for a human login if desired.
+desktop_user: ansible

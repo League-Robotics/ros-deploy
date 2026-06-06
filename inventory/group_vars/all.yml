@@ -30,6 +30,11 @@ ros_node_ip: "{{ ansible_host }}"
 # Whether to configure the host for X11 forwarding over SSH
 configure_xwindows: false
 
+# ── Desktop / VNC ─────────────────────────────────────────
+# Whether to install the XFCE + VNC desktop (roles/desktop). Enabled fleet-wide
+# for Raspberry Pis via group_vars/raspberry_pis.yml.
+configure_desktop: false
+
 # ── Docker ────────────────────────────────────────────────
 # Whether to install Docker CE on the host
 install_docker: false
