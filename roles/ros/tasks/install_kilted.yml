@@ -71,9 +71,19 @@
   ansible.builtin.apt:
     update_cache: true
 
-- name: Upgrade existing packages before ROS install
+- name: Upgrade existing packages before ROS install (best-effort)
   ansible.builtin.apt:
-    upgrade: dist
+    upgrade: safe
+    lock_timeout: 120
+  register: _ros_pkg_upgrade
+  # This pre-upgrade is opportunistic, not required for the ROS install that
+  # follows. Tolerate ONLY the case where apt refuses because a package would be
+  # downgraded (a host has something installed newer than the repos offer, e.g.
+  # firefox) — the apt module can't pass --allow-downgrades. Still fail on real
+  # errors (network, held locks, broken deps).
+  failed_when:
+    - _ros_pkg_upgrade is failed
+    - "'allow-downgrades' not in (_ros_pkg_upgrade.msg | default(''))"
 
 - name: Install ROS 2 Kilted package
   ansible.builtin.apt:
