@@ -1,0 +1,49 @@
+---
+# roles/ros_user/defaults/main.yml
+# The shared, Ansible-managed ROS working account. Everyone works as this user
+# on the ROS nodes; ROS overlays and environment additions are managed centrally
+# (here + the drop-in dir below) instead of per personal account.
+
+ros_user_name: ros
+ros_user_gecos: "Shared ROS working account"
+ros_user_shell: /usr/bin/zsh
+
+# Supplementary groups for hardware access (serial devices, cameras, USB).
+ros_user_groups:
+  - dialout
+  - video
+  - plugdev
+
+# Passwordless sudo for the shared account (lab convenience — anyone who can
+# SSH in as `ros` gets root). Set ros_user_sudo_nopasswd: false to require a
+# password instead, or ros_user_sudo: false for an unprivileged account.
+ros_user_sudo: true
+ros_user_sudo_nopasswd: true
+
+# Login password for the shared ros account (lab convenience). This is a
+# precomputed SHA-512 crypt hash of the plaintext "robotics" with a fixed salt,
+# so runs stay idempotent and we don't depend on passlib/crypt on the control
+# machine (the macOS crypt can't produce sha512 hashes). Regenerate with:
+#   openssl passwd -6 -salt <salt> <plaintext>
+# Set ros_user_password: "" (or "*") to leave the account password-locked.
+ros_user_password: "$6$rosdeploysalt$MmHvFzTymPvmP35HKvbj9bJTMGxtJ9B8NZH8Oxg8k.CU9YMckVZsNARQTGK7fIeq8fr9smO8oAedhfSeu2BXH1"
+
+# Enable password-based SSH login on the node so the ros account is reachable
+# with the password above (in addition to key auth). Lab convenience — anyone
+# on the network can then attempt password logins. Set false to keep key-only.
+ros_user_ssh_password_auth: true
+
+# Public keys allowed to SSH in as the ros user. Paths are resolved on the
+# control machine (relative to the playbook dir), like config/keys/ansible.pub.
+ros_user_authorized_keys:
+  - "{{ playbook_dir }}/../config/keys/eric.pub"
+
+# Extra ROS workspace overlays to source. Each entry is a workspace root; the
+# shell sources "<root>/install/setup.zsh" if it exists and shows it in the
+# prompt's overlay list. e.g. ['/home/ros/ros2_ws'].
+ros_user_workspace_overlays: []
+
+# Fleet-wide drop-in dir: every *.zsh here is sourced (in order) by the ros
+# user's shell. Deploy environment additions across the fleet by dropping
+# files here. Managed centrally so all nodes stay in sync.
+ros_user_profiled_dir: /etc/ros/profile.d

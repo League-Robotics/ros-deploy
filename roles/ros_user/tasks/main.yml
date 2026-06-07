@@ -1,0 +1,88 @@
+---
+# roles/ros_user/tasks/main.yml
+# Create and manage the shared `ros` working account: zsh shell, automatic ROS
+# overlay sourcing, and a ROS-aware prompt. Deployed across the ROS nodes so
+# everyone works as `ros` and environment changes are managed in one place.
+
+- name: Install zsh
+  ansible.builtin.apt:
+    name: zsh
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+
+- name: Ensure hardware-access groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ ros_user_groups }}"
+
+- name: Create the shared ros user
+  ansible.builtin.user:
+    name: "{{ ros_user_name }}"
+    comment: "{{ ros_user_gecos }}"
+    shell: "{{ ros_user_shell }}"
+    groups: "{{ ros_user_groups }}"
+    append: true
+    create_home: true
+    password: "{{ ros_user_password | default(omit) }}"
+    update_password: always
+    state: present
+
+- name: Grant ros user passwordless sudo
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ ros_user_name }}"
+    content: "{{ ros_user_name }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+  when: ros_user_sudo and ros_user_sudo_nopasswd
+
+- name: Grant ros user password-based sudo (group membership)
+  ansible.builtin.user:
+    name: "{{ ros_user_name }}"
+    groups: sudo
+    append: true
+  when: ros_user_sudo and not ros_user_sudo_nopasswd
+
+- name: Deploy authorized keys for the ros user
+  ansible.posix.authorized_key:
+    user: "{{ ros_user_name }}"
+    key: "{{ lookup('file', item) }}"
+    state: present
+    exclusive: false
+  loop: "{{ ros_user_authorized_keys }}"
+
+# Enable password-based SSH login via a low-numbered drop-in so it wins over
+# cloud-init/distro drop-ins (sshd uses the first value it reads for an option,
+# and the Include sits at the top of the main sshd_config).
+- name: Enable SSH password authentication for the ros account
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/00-ros-password-auth.conf
+    content: |
+      # Managed by Ansible (ros_user role). Allow password SSH logins so the
+      # shared ros account is reachable by password as well as by key.
+      PasswordAuthentication yes
+    owner: root
+    group: root
+    mode: "0644"
+  when: ros_user_ssh_password_auth
+  notify: Restart sshd
+
+- name: Ensure fleet-wide ROS env drop-in dir exists
+  ansible.builtin.file:
+    path: "{{ ros_user_profiled_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy managed .zshrc for the ros user
+  ansible.builtin.template:
+    src: zshrc.j2
+    dest: "/home/{{ ros_user_name }}/.zshrc"
+    owner: "{{ ros_user_name }}"
+    group: "{{ ros_user_name }}"
+    mode: "0644"

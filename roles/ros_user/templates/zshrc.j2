@@ -1,0 +1,63 @@
+# ~/.zshrc for the shared `ros` working account on {{ inventory_hostname }}.
+# Managed by Ansible (roles/ros_user) — do not edit by hand; changes are
+# overwritten on the next run. Add fleet-wide environment in
+# {{ ros_user_profiled_dir }}/*.zsh instead.
+
+# ── History & sane interactive defaults ──────────────────
+HISTFILE="$HOME/.zsh_history"
+HISTSIZE=10000
+SAVEHIST=10000
+setopt SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
+autoload -Uz compinit && compinit -u
+
+# ── ROS 2 environment ────────────────────────────────────
+export ROS_DOMAIN_ID="{{ ros_domain_id }}"
+export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-0}"
+
+# Overlays sourced this session, shown in the prompt.
+typeset -ga ROS_OVERLAYS
+
+_ros_source_overlay() {
+  # $1 = setup script to source, $2 = short label for the prompt
+  if [ -f "$1" ]; then
+    source "$1"
+    ROS_OVERLAYS+=("$2")
+  fi
+}
+
+# Base ROS 2 underlay.
+_ros_source_overlay "/opt/ros/{{ ros_version }}/setup.zsh" "{{ ros_version }}"
+
+# Workspace overlays (managed list).
+{% for ws in ros_user_workspace_overlays %}
+_ros_source_overlay "{{ ws }}/install/setup.zsh" "{{ ws | basename }}"
+{% endfor %}
+
+# Fleet-wide drop-in environment additions: every *.zsh here is sourced in
+# order. Deploy shared env across the fleet by adding files to this dir.
+if [ -d "{{ ros_user_profiled_dir }}" ]; then
+  for _f in "{{ ros_user_profiled_dir }}"/*.zsh(N); do
+    source "$_f"
+  done
+  unset _f
+fi
+
+# ── Prompt ───────────────────────────────────────────────
+# Two lines, like Eric's personal prompt: line 1 carries the context, then a
+# newline so the line you actually type on stays short and uncluttered.
+#   ✓ ⬢ ros kilted·D42 [kilted,my_ws] ~/ws ros@agony (main)
+#   ros$
+autoload -Uz vcs_info
+zstyle ':vcs_info:*' enable git
+zstyle ':vcs_info:git:*' formats '(%F{red}%b%f)'
+zstyle ':vcs_info:git:*' actionformats '(%F{red}%b%f|%F{yellow}%a%f)'
+precmd() { vcs_info }
+setopt PROMPT_SUBST
+
+NEWLINE=$'\n'
+PROMPT='%(?.%F{green}✓%f.%F{red}✗%f) '                                  # last-cmd status
+PROMPT+='%F{magenta}⬢ {{ ros_user_name }}%f '                           # ROS user badge
+PROMPT+='%F{yellow}{{ ros_version }}%f%F{8}·D${ROS_DOMAIN_ID}%f '       # distro · DDS domain
+PROMPT+='%F{8}[${(j:,:)ROS_OVERLAYS}]%f '                               # active overlays
+PROMPT+='%F{cyan}%~%f %n@%m ${vcs_info_msg_0_}'                         # cwd · user@host · git
+PROMPT+='${NEWLINE}%F{magenta}{{ ros_user_name }}%f$ '                  # short input line

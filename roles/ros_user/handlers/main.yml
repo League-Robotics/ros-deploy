@@ -1,0 +1,7 @@
+---
+# roles/ros_user/handlers/main.yml
+
+- name: Restart sshd
+  ansible.builtin.service:
+    name: sshd
+    state: restarted

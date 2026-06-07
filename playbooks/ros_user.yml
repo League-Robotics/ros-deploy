@@ -1,0 +1,12 @@
+---
+# playbooks/ros_user.yml
+# Standalone playbook: provision (or update) the shared `ros` working account
+# on the ROS nodes — zsh shell, ROS overlay auto-sourcing, and the ROS prompt.
+# Run: ansible-playbook playbooks/ros_user.yml
+# Limit to one host: ansible-playbook playbooks/ros_user.yml --limit agony
+
+- name: Provision the shared ros working account
+  hosts: ros_nodes
+  become: true
+  roles:
+    - ros_user

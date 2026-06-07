@@ -15,6 +15,12 @@
   roles:
     - ros
 
+- name: Provision the shared ros working account
+  hosts: ros_nodes
+  become: true
+  roles:
+    - ros_user
+
 - name: Build the heartbeat connectivity-check package
   hosts: ros_nodes
   become: true
