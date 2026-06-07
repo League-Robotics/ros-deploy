@@ -1,0 +1,29 @@
+---
+# roles/rosbridge/tasks/main.yml
+# Installs rosbridge_suite and runs rosbridge_server as a systemd service so
+# non-ROS clients can pub/sub ROS 2 topics over a JSON WebSocket on a single port.
+
+- name: Install rosbridge_suite (rosbridge_server + rosapi)
+  ansible.builtin.apt:
+    name: "{{ rosbridge_apt_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Deploy rosbridge systemd unit
+  ansible.builtin.template:
+    src: rosbridge.service.j2
+    dest: "/etc/systemd/system/{{ rosbridge_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart rosbridge service
+
+- name: Enable and start rosbridge service
+  ansible.builtin.systemd:
+    name: "{{ rosbridge_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

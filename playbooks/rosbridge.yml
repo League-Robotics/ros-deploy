@@ -1,0 +1,14 @@
+---
+# playbooks/rosbridge.yml
+# Install the rosbridge_server JSON/WebSocket gateway so non-ROS clients
+# (roslibpy, roslib.js, ...) can pub/sub ROS 2 topics without the ROS stack.
+# Run: ansible-playbook playbooks/rosbridge.yml --limit agony
+#
+# Enable per host with `install_rosbridge: true` in inventory/host_vars/<host>.yml.
+
+- name: Install and run the rosbridge WebSocket gateway
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: rosbridge
+      when: install_rosbridge | default(false)

@@ -34,6 +34,13 @@
     - role: cameras
       when: install_cameras | default(false)
 
+- name: Install the rosbridge WebSocket gateway (JSON bridge for non-ROS clients)
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: rosbridge
+      when: install_rosbridge | default(false)
+
 - name: Configure X Windows forwarding
   hosts: ros_all
   become: true

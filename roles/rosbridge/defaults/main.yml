@@ -1,0 +1,29 @@
+---
+# roles/rosbridge/defaults/main.yml
+# rosbridge_server — a JSON-over-WebSocket gateway that lets NON-ROS clients
+# (Python via roslibpy, browsers via roslib.js, etc.) publish and subscribe to
+# ROS 2 topics without installing any of the ROS stack. The bridge runs on a
+# ROS node (where the full stack already lives) and speaks the documented
+# rosbridge v2 protocol outward on a single port.
+#
+# Enable per host with `install_rosbridge: true` in inventory/host_vars/<host>.yml.
+
+# rosbridge_suite pulls in rosbridge_server (the WebSocket bridge) and rosapi
+# (topic/type introspection so clients can discover what's available).
+rosbridge_apt_package: "ros-{{ ros_version }}-rosbridge-suite"
+
+# systemd service (auto-start on boot, restart on failure).
+rosbridge_service_name: rosbridge
+
+# WebSocket port clients connect to (ws://<host>:<port>).
+rosbridge_port: 9090
+
+# Interface to bind. 0.0.0.0 = reachable from anywhere on the LAN. rosbridge has
+# NO authentication: any client that connects can pub/sub any topic and call any
+# service. Inside the lab that's fine; if untrusted/external clients may reach
+# this host, bind to a specific LAN address (or front it with a curated gateway).
+rosbridge_address: "0.0.0.0"
+
+# OS user the bridge runs as. Needs a real $HOME (ROS resolves its log dir from
+# it), so we reuse the Ansible-managed account by default.
+rosbridge_user: "{{ ansible_managed_user | default('ansible') }}"

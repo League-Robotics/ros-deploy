@@ -323,6 +323,55 @@ Alternatively, on a node with a local display just run
 
 ---
 
+## rosbridge gateway (non-ROS clients)
+
+The `rosbridge` role runs [`rosbridge_server`](https://github.com/RobotWebTools/rosbridge_suite)
+— a JSON-over-WebSocket gateway that lets clients **without any ROS install**
+publish and subscribe to ROS 2 topics. The bridge runs on a ROS node (it sees
+the fleet's topics over domain 42) and speaks the documented rosbridge v2 JSON
+protocol outward on a single port. This also sidesteps the Humble/Kilted split:
+clients aren't ROS at all.
+
+Enable it per host (currently `agony`) in `inventory/host_vars/<host>.yml`:
+
+```yaml
+install_rosbridge: true
+# rosbridge_port: 9090       # default
+# rosbridge_address: 0.0.0.0 # default — bind to a LAN IP to restrict reach
+```
+
+Deploy: `ansible-playbook playbooks/rosbridge.yml --limit agony` (also part of
+`site.yml`). A `rosbridge` systemd service runs the bridge on boot at
+`ws://<host>:<port>` (default `ws://agony:9090`).
+
+### Talking to it
+
+**Python** — `pip install roslibpy` (pure Python, no ROS):
+
+```python
+import roslibpy
+ros = roslibpy.Ros(host='agony', port=9090); ros.run()
+
+# read: ROS → client
+roslibpy.Topic(ros, '/agony/joy/0', 'sensor_msgs/Joy').subscribe(
+    lambda m: print(m['axes']))
+
+# write: client → ROS
+cmd = roslibpy.Topic(ros, '/cmd_vel', 'geometry_msgs/Twist')
+cmd.publish(roslibpy.Message({'linear': {'x': 0.5}, 'angular': {'z': 0.2}}))
+```
+
+**Browser** — the same with [`roslib.js`](https://github.com/RobotWebTools/roslibjs)
+over `ws://agony:9090` (`new ROSLIB.Topic(...).subscribe(...)` / `.publish(...)`).
+
+> ⚠️ **No authentication.** Any client that connects can pub/sub any topic and
+> call any service. Fine inside the lab; if untrusted clients may reach the host,
+> set `rosbridge_address` to a specific LAN interface and/or front it with a
+> curated gateway. rosbridge only bridges topics it can see over DDS — to surface
+> the Humble nodes' topics they must be interoperating on domain 42.
+
+---
+
 ## Docker setup
 
 The `docker_ros.yml` playbook:

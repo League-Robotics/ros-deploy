@@ -48,6 +48,12 @@ ros_in_docker: false
 # inventory/host_vars/<host>.yml.
 install_cameras: false
 
+# ── rosbridge gateway ─────────────────────────────────────
+# Whether to run rosbridge_server (roles/rosbridge): a JSON/WebSocket gateway
+# letting non-ROS clients (roslibpy, roslib.js) pub/sub ROS topics without the
+# ROS stack. Enable per host in inventory/host_vars/<host>.yml.
+install_rosbridge: false
+
 # Docker image tags used in docker-compose templates
 ros_humble_image: "ros:humble-ros-base"
 ros_kilted_image: "ros:kilted-ros-base"

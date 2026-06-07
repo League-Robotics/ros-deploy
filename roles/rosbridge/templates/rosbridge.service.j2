@@ -1,0 +1,20 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=ROS {{ ros_version }} rosbridge_server (JSON/WebSocket gateway for non-ROS clients)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as a real user so $HOME is set (ROS needs it to resolve its log dir).
+User={{ rosbridge_user }}
+# systemd does not read /etc/profile.d, so set the ROS env explicitly
+# (mirrors /etc/profile.d/ros_env.sh) and source the ROS 2 setup in ExecStart.
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:={{ rosbridge_port }} address:={{ rosbridge_address }}'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
