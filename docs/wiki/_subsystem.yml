@@ -1,0 +1,4 @@
+name: ros-deploy
+title: ROS Deploy
+blurb: Ansible-based deployment of ROS 2 across the robot fleet — physical robots, Raspberry Pis, VMs, and Docker.
+order: 20
