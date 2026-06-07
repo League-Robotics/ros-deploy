@@ -1,0 +1,36 @@
+---
+# roles/joy/defaults/main.yml
+# Plug-and-play ROS 2 joystick publisher. The host does nothing until a
+# controller is plugged in; a udev rule then auto-starts a per-device systemd
+# service that publishes sensor_msgs/Joy on /<hostname>/joy/<N>, where N is a
+# stable per-controller index. Unplug the controller and the service stops.
+#
+# Enable per host/group with `install_joy: true` (set for the raspberry_pis
+# group in inventory/group_vars/raspberry_pis.yml).
+
+# joy_linux drives the legacy /dev/input/jsN device directly, so we can bind a
+# specific physical device per udev event (the SDL `joy` node selects by SDL
+# index, which is harder to pin to one device deterministically).
+joy_apt_package: "ros-{{ ros_version }}-joy-linux"
+
+# systemd template unit instantiated per device, e.g. ros-joy@js0.service.
+joy_service_template: ros-joy
+
+# Where the launcher script and the persistent controller→index map live.
+joy_config_dir: /opt/ros-joy
+joy_state_dir: /var/lib/ros-joy
+
+# udev rule that auto-starts the service when a joystick appears.
+joy_udev_rule_path: /etc/udev/rules.d/99-ros-joy.rules
+
+# OS user the publisher runs as. Needs read access to /dev/input/jsN, so the
+# role adds it to the `input` group. Reuses the Ansible-managed account (it has
+# a real $HOME, which ROS needs for its log dir).
+joy_user: "{{ ansible_managed_user | default('ansible') }}"
+joy_device_group: input
+
+# joy_linux tuning. autorepeat_rate > 0 republishes the current state at a fixed
+# rate even when nothing changes — so a viewer (joydump) shows a steady Hz and a
+# frozen/unplugged controller is obvious. deadzone ignores tiny stick drift.
+joy_autorepeat_rate: 20.0
+joy_deadzone: 0.05

@@ -1,0 +1,15 @@
+---
+# playbooks/joy.yml
+# Install the plug-and-play ROS joystick publisher. Hosts do nothing until a
+# controller is plugged in, then auto-publish sensor_msgs/Joy on
+# /<hostname>/joy/<N>. Run: ansible-playbook playbooks/joy.yml --limit raspberry_pis
+#
+# Enable per host/group with `install_joy: true` (set for the raspberry_pis
+# group in inventory/group_vars/raspberry_pis.yml).
+
+- name: Install the plug-and-play ROS joystick publisher
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: joy
+      when: install_joy | default(false)

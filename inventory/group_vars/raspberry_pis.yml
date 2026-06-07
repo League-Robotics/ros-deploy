@@ -9,3 +9,12 @@ configure_desktop: true
 # Account that owns the VNC session. Defaults to the `ansible` service account
 # (always present); override in a host's host_vars for a human login if desired.
 desktop_user: ansible
+
+# Plug-and-play joystick publisher (roles/joy): every Pi auto-publishes any
+# controller plugged into it as sensor_msgs/Joy on /<hostname>/joy/<N>. Idle
+# until a joystick appears.
+install_joy: true
+
+# Keep every Pi on the fleet WiFi (roles/wifi → "Busboom Mesh"). Required for
+# DDS multicast discovery; a Pi on a different SSID is invisible to the fleet.
+configure_wifi: true

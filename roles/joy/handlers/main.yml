@@ -1,0 +1,19 @@
+---
+# roles/joy/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Reload udev rules
+  ansible.builtin.command:
+    cmd: udevadm control --reload
+  changed_when: true
+
+# Re-run the rules against currently-connected devices so a joystick that is
+# already plugged in when the role is (re)deployed starts publishing now,
+# without waiting for a physical replug.
+- name: Trigger udev for input devices
+  ansible.builtin.command:
+    cmd: udevadm trigger --subsystem-match=input --action=add
+  changed_when: true

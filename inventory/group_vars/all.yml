@@ -54,6 +54,18 @@ install_cameras: false
 # ROS stack. Enable per host in inventory/host_vars/<host>.yml.
 install_rosbridge: false
 
+# ── Joystick publisher ────────────────────────────────────
+# Whether to install the plug-and-play joystick publisher (roles/joy): hosts do
+# nothing until a controller is plugged in, then auto-publish sensor_msgs/Joy on
+# /<hostname>/joy/<N>. Enabled for the raspberry_pis group.
+install_joy: false
+
+# ── Fleet WiFi ────────────────────────────────────────────
+# Whether to manage the host's WiFi connection (roles/wifi). Keeps the Pis on
+# the shared "Busboom Mesh" SSID so DDS multicast discovery works. The PSK comes
+# from the encrypted dotconfig secrets (WIFI_MESH_PSK). Enabled for raspberry_pis.
+configure_wifi: false
+
 # Docker image tags used in docker-compose templates
 ros_humble_image: "ros:humble-ros-base"
 ros_kilted_image: "ros:kilted-ros-base"

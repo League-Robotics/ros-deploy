@@ -1,0 +1,15 @@
+---
+# playbooks/wifi.yml
+# Put the Pis on the fleet WiFi (Busboom Mesh) so DDS multicast discovery works.
+# Requires the WiFi PSK in the environment (from encrypted dotconfig secrets):
+#   dotconfig load <deploy> && set -a && source .env && set +a
+#   ansible-playbook playbooks/wifi.yml --limit raspberry_pis
+#
+# Enable per host/group with `configure_wifi: true` (set for raspberry_pis).
+
+- name: Configure fleet WiFi (Busboom Mesh)
+  hosts: raspberry_pis
+  become: true
+  roles:
+    - role: wifi
+      when: configure_wifi | default(false)

@@ -1,0 +1,5 @@
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# Auto-start a ROS joy publisher when a joystick (/dev/input/jsN) is plugged in.
+# TAG+="systemd" makes systemd track the device so the service's BindsTo= stops
+# it again on unplug; SYSTEMD_WANTS starts the per-device template instance.
+ACTION=="add", SUBSYSTEM=="input", KERNEL=="js[0-9]*", TAG+="systemd", ENV{SYSTEMD_WANTS}="{{ joy_service_template }}@%k.service"

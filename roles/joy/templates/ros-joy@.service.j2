@@ -1,0 +1,22 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# Template unit: one instance per joystick device, e.g. {{ joy_service_template }}@js0.
+# Started by udev (see {{ joy_udev_rule_path }}) when a controller is plugged in.
+Description=ROS {{ ros_version }} joy publisher for /dev/input/%i
+After=network-online.target dev-input-%i.device
+Wants=network-online.target
+# Tie the service lifetime to the device: unplug the joystick and systemd stops
+# this instance automatically (the .device unit disappears).
+BindsTo=dev-input-%i.device
+
+[Service]
+Type=simple
+# Run as a real user so $HOME is set (ROS needs it to resolve its log dir).
+User={{ joy_user }}
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+ExecStart={{ joy_config_dir }}/joy-publish.sh %i
+Restart=on-failure
+RestartSec=2
+
+# No [Install]/WantedBy: this is not enabled on boot — udev starts it on demand.

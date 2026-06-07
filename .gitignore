@@ -4,3 +4,8 @@
 !.env.example
 
 .DS_Store
+
+# Python (test/ rosbridge demo clients, managed by uv)
+.venv/
+__pycache__/
+*.pyc

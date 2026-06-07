@@ -9,6 +9,16 @@
   roles:
     - common
 
+# WiFi first: the Pis must share the fleet's WiFi (Busboom Mesh) or DDS
+# multicast discovery silently fails (see roles/wifi). Needs WIFI_MESH_PSK in
+# the environment from the encrypted dotconfig secrets.
+- name: Configure fleet WiFi (Busboom Mesh)
+  hosts: raspberry_pis
+  become: true
+  roles:
+    - role: wifi
+      when: configure_wifi | default(false)
+
 - name: Install ROS 2 on physical/VM nodes
   hosts: ros_nodes
   become: true
@@ -40,6 +50,13 @@
   roles:
     - role: rosbridge
       when: install_rosbridge | default(false)
+
+- name: Install the plug-and-play ROS joystick publisher
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: joy
+      when: install_joy | default(false)
 
 - name: Configure X Windows forwarding
   hosts: ros_all

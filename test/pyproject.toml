@@ -1,0 +1,14 @@
+[project]
+name = "rosbridge-demos"
+version = "0.1.0"
+description = "Demo clients for the fleet's rosbridge gateway — talk to ROS 2 over JSON/WebSocket with no ROS install."
+requires-python = ">=3.11"
+dependencies = [
+    "roslibpy>=1.7",
+    "rich>=13.7",
+]
+
+# This is a collection of runnable scripts, not an installable package — tell uv
+# not to try to build/install the project itself, just manage the dependencies.
+[tool.uv]
+package = false

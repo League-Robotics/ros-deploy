@@ -1,0 +1,69 @@
+---
+# roles/joy/tasks/main.yml
+# Plug-and-play joystick publisher: install joy_linux, drop a launcher + systemd
+# template unit, and a udev rule that starts one publisher per joystick on plug.
+
+- name: Install joy_linux
+  ansible.builtin.apt:
+    name: "{{ joy_apt_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Add joy service user to the input group (read /dev/input/jsN)
+  ansible.builtin.user:
+    name: "{{ joy_user }}"
+    groups: "{{ joy_device_group }}"
+    append: true
+
+- name: Ensure joy config directory exists (root-owned launcher script)
+  ansible.builtin.file:
+    path: "{{ joy_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The launcher runs as joy_user and writes a lock + the controller→index map
+# here, so this directory must be owned by that user (not root).
+- name: Ensure joy state directory exists (writable by the joy user)
+  ansible.builtin.file:
+    path: "{{ joy_state_dir }}"
+    state: directory
+    owner: "{{ joy_user }}"
+    group: "{{ joy_user }}"
+    mode: "0755"
+
+- name: Deploy joy launcher script
+  ansible.builtin.template:
+    src: joy-publish.sh.j2
+    dest: "{{ joy_config_dir }}/joy-publish.sh"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy joy systemd template unit
+  ansible.builtin.template:
+    src: ros-joy@.service.j2
+    dest: "/etc/systemd/system/{{ joy_service_template }}@.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Deploy joy udev rule
+  ansible.builtin.template:
+    src: 99-ros-joy.rules.j2
+    dest: "{{ joy_udev_rule_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload udev rules
+    - Trigger udev for input devices
+
+# Make systemd see the new template unit immediately, so a joystick that is
+# already plugged in at deploy time (via the udev trigger handler) can start.
+- name: Reload systemd so the template unit is registered
+  ansible.builtin.systemd:
+    daemon_reload: true

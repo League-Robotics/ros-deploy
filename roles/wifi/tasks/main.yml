@@ -1,0 +1,73 @@
+---
+# roles/wifi/tasks/main.yml
+# Ensure the host is on the fleet WiFi (Busboom Mesh) with a static IP, so DDS
+# multicast discovery works. Idempotent and connectivity-safe: it only switches
+# APs if the host isn't already on the target connection, and does so detached
+# so the brief drop doesn't abort the play (the static IP is preserved).
+
+- name: Ensure the WiFi PSK is provided (from encrypted dotconfig secrets)
+  ansible.builtin.assert:
+    that:
+      - wifi_mesh_psk | length > 0
+    fail_msg: >-
+      wifi_mesh_psk is empty. Load it from the encrypted dotconfig secrets:
+      `dotconfig load <deploy>` then `set -a; source .env; set +a`
+      (exports WIFI_MESH_PSK), then re-run.
+    quiet: true
+
+- name: Ensure the Busboom Mesh connection exists (per-host static IP)
+  community.general.nmcli:
+    type: wifi
+    conn_name: "{{ wifi_conn_name }}"
+    ifname: "{{ wifi_ifname }}"
+    ssid: "{{ wifi_ssid }}"
+    wifi_sec:
+      key-mgmt: wpa-psk
+      psk: "{{ wifi_mesh_psk }}"
+    method4: manual
+    ip4:
+      - "{{ ansible_host }}/{{ wifi_prefix }}"
+    gw4: "{{ wifi_gw4 }}"
+    dns4: "{{ wifi_dns4 }}"
+    autoconnect: true
+    state: present
+  no_log: true
+
+- name: Read current autoconnect priority
+  ansible.builtin.command:
+    cmd: nmcli -t -f connection.autoconnect-priority connection show "{{ wifi_conn_name }}"
+  register: _wifi_prio
+  changed_when: false
+
+- name: Prefer Busboom Mesh on autoconnect
+  ansible.builtin.command:
+    cmd: >-
+      nmcli connection modify "{{ wifi_conn_name }}"
+      connection.autoconnect-priority {{ wifi_autoconnect_priority }}
+  when: >-
+    (_wifi_prio.stdout | regex_replace('^connection.autoconnect-priority:', '') | trim)
+    != (wifi_autoconnect_priority | string)
+  changed_when: true
+
+- name: Detect the connection currently bound to the WiFi interface
+  ansible.builtin.command:
+    cmd: nmcli -t -f GENERAL.CONNECTION device show {{ wifi_ifname }}
+  register: _wifi_active
+  changed_when: false
+  failed_when: false
+
+- name: Switch to Busboom Mesh if not already on it (detached; survives the SSH drop)
+  ansible.builtin.command:
+    cmd: systemd-run --no-block bash -c 'sleep 2; nmcli connection up "{{ wifi_conn_name }}"'
+  when: >-
+    (_wifi_active.stdout | regex_replace('^GENERAL.CONNECTION:', '') | trim)
+    != wifi_conn_name
+  changed_when: true
+
+- name: Wait for the host to come back after the WiFi switch
+  ansible.builtin.wait_for_connection:
+    delay: 5
+    timeout: 90
+  when: >-
+    (_wifi_active.stdout | regex_replace('^GENERAL.CONNECTION:', '') | trim)
+    != wifi_conn_name

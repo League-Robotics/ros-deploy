@@ -225,6 +225,40 @@ This installs Xvfb and creates a systemd service on `:99`.  Set
 
 ---
 
+## Fleet WiFi
+
+ROS 2 DDS discovery uses **multicast**, which does **not** bridge between the
+site's separate WiFi SSIDs/APs even though they share the `192.168.1.0/21`
+subnet. A node on the wrong SSID is unicast-reachable (ping/SSH work) but
+**invisible to DDS discovery** — it sees only its own topics and the fleet can't
+see it. So every ROS Pi must be on the same WiFi as the wired hosts: **Busboom
+Mesh**.
+
+The `wifi` role (enabled for `raspberry_pis` via `configure_wifi: true`) ensures
+each Pi has a NetworkManager profile for Busboom Mesh with its **static**
+inventory IP (so it stays reachable at the same address after switching APs),
+and a high autoconnect priority. It only switches APs if the host isn't already
+on the target connection, and does so detached so the brief drop doesn't abort
+the run.
+
+The PSK is **not** stored in the repo. It lives in the SOPS-encrypted dotconfig
+secrets as `WIFI_MESH_PSK`; export it into the environment before running:
+
+```bash
+dotconfig load dev            # or your deploy; decrypts secrets into .env
+set -a; source .env; set +a   # exports WIFI_MESH_PSK
+ansible-playbook playbooks/wifi.yml --limit raspberry_pis
+```
+
+To change/rotate the PSK: `dotconfig load <deploy>`, edit `WIFI_MESH_PSK` in
+`.env`, then `dotconfig save` (re-encrypts `config/<deploy>/secrets.env`).
+
+> Diagnosing isolation: on the suspect node `ros2 topic list` shows only its own
+> topics; `iwgetid -r` reveals the wrong SSID; `ros2 multicast send`/`receive`
+> between it and a wired host fails one-way while `ping` succeeds.
+
+---
+
 ## Cameras
 
 The `cameras` role installs [`camera_ros`](https://github.com/christianrauch/camera_ros)
@@ -369,6 +403,42 @@ over `ws://agony:9090` (`new ROSLIB.Topic(...).subscribe(...)` / `.publish(...)`
 > set `rosbridge_address` to a specific LAN interface and/or front it with a
 > curated gateway. rosbridge only bridges topics it can see over DDS — to surface
 > the Humble nodes' topics they must be interoperating on domain 42.
+
+---
+
+## Joystick publisher (plug-and-play)
+
+The `joy` role installs a **plug-and-play** joystick publisher on a host. The
+host does nothing until a controller is plugged in; a udev rule then auto-starts
+a per-device systemd service (`ros-joy@jsN`) that runs a `joy_linux` node
+publishing `sensor_msgs/Joy` on `/<hostname>/joy/<N>`. Unplug the controller and
+the service stops (the unit `BindsTo` the device). It's enabled for every
+Raspberry Pi via `group_vars/raspberry_pis.yml`:
+
+```yaml
+install_joy: true          # idle until a joystick is plugged in
+# joy_autorepeat_rate: 20.0   # republish rate (Hz) so viewers show steady Hz
+# joy_deadzone: 0.05
+```
+
+Deploy: `ansible-playbook playbooks/joy.yml --limit raspberry_pis` (also part of
+`site.yml`). Then plug a controller into any Pi and its topic appears:
+
+```bash
+# from the test/ clients (no ROS install):
+uv run list_topics.py --filter joy        # see /vidar/joy/0, etc.
+uv run joydump.py                          # live axes/buttons viewer
+```
+
+- **`<N>` is a stable per-controller index.** The launcher keys each controller
+  by its `/dev/input/by-id` identity (vendor+model+serial) and persists the
+  mapping in `/var/lib/ros-joy/index.map`, so the same stick keeps the same `N`
+  across replug/reboot (fills the lowest free slot for a new one). Controllers
+  with no unique serial fall back to their USB port path.
+- **Hostnames are sanitized** to valid ROS names (`[A-Za-z0-9_]`, no leading
+  digit) — e.g. `docker-host1` → `/docker_host1/joy/0`.
+- The publisher runs as the `ansible` account (added to the `input` group for
+  `/dev/input/jsN` access); override with `joy_user`.
 
 ---
 

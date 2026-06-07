@@ -1,0 +1,33 @@
+---
+# roles/wifi/defaults/main.yml
+# Manage the fleet WiFi connection via NetworkManager. All ROS Pis must be on the
+# SAME WiFi network as the wired hosts, because ROS 2 DDS discovery relies on
+# multicast, which does NOT bridge between the site's separate SSIDs/APs even
+# though they share a subnet. A Pi on the wrong SSID is unicast-reachable (ping
+# works) but invisible to DDS discovery. See README "Fleet WiFi".
+#
+# Enable per host/group with `configure_wifi: true` (set for raspberry_pis).
+
+wifi_ifname: wlan0
+
+# The connection NetworkManager profile + the SSID to join. conn_name is the
+# profile label; ssid is the actual network name (kept identical for clarity).
+wifi_conn_name: "Busboom Mesh"
+wifi_ssid: "Busboom Mesh"
+
+# Each Pi keeps a static address (its inventory ansible_host) so it stays
+# reachable at the same IP after switching APs. Prefix/gateway/DNS match the LAN.
+wifi_prefix: 21
+wifi_gw4: 192.168.1.254
+wifi_dns4:
+  - 192.168.1.254
+  - 8.8.8.8
+
+# Win the autoconnect race against any other saved profile (e.g. Busboom_Garage,
+# which we leave in place as a fallback rather than deleting).
+wifi_autoconnect_priority: 100
+
+# WiFi PSK — NEVER hard-code this in the repo. It comes from the encrypted
+# dotconfig secrets via the environment: `dotconfig load <deploy>` then
+# `set -a; source .env; set +a` exports WIFI_MESH_PSK before running the play.
+wifi_mesh_psk: "{{ lookup('ansible.builtin.env', 'WIFI_MESH_PSK', default='') }}"

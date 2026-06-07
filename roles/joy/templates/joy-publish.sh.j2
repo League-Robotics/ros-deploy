@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# Launch a ROS 2 joy_linux node for ONE /dev/input/jsN device, publishing to
+# /<hostname>/joy/<N> where N is a stable per-controller index. Invoked by the
+# {{ joy_service_template }}@<jsN>.service systemd unit, which udev starts on plug.
+set -euo pipefail
+
+DEV_NAME="${1:?usage: joy-publish.sh jsN}"
+DEV="/dev/input/${DEV_NAME}"
+STATE_DIR="{{ joy_state_dir }}"
+MAP="${STATE_DIR}/index.map"
+LOCK="${STATE_DIR}/.lock"
+
+[ -e "$DEV" ] || { echo "joy-publish: $DEV not present" >&2; exit 1; }
+
+# ── Stable key for this physical controller ──────────────────────────────────
+# Prefer the /dev/input/by-id symlink (encodes vendor+model+serial → stable
+# across replug/reboot). Fall back to the USB port path, then the kernel name.
+key="$(udevadm info -q symlink -n "$DEV" 2>/dev/null | tr ' ' '\n' \
+        | grep -m1 'by-id/' | sed 's#.*/##' || true)"
+[ -n "$key" ] || key="$(udevadm info -q property -n "$DEV" 2>/dev/null \
+        | sed -n 's/^ID_PATH=//p')"
+[ -n "$key" ] || key="$DEV_NAME"
+
+# ── Map the key to a stable small index N (persisted, concurrency-safe) ───────
+# Two controllers plugged at once → two service instances; flock serializes the
+# map update. A new controller gets the lowest free index (fills gaps).
+mkdir -p "$STATE_DIR"
+exec 9>"$LOCK"; flock 9
+touch "$MAP"
+N="$(awk -v k="$key" '$1==k{print $2; f=1} END{exit !f}' "$MAP" || true)"
+if [ -z "$N" ]; then
+  N="$(awk '{print $2}' "$MAP" | sort -n | awk 'BEGIN{i=0}{if($1==i)i++}END{print i}')"
+  printf '%s %s\n' "$key" "$N" >> "$MAP"
+fi
+flock -u 9
+
+# ── ROS-safe hostname (names allow [A-Za-z0-9_], no leading digit) ────────────
+host="$(hostname)"
+host="$(printf '%s' "$host" | tr -c 'A-Za-z0-9_' '_')"
+case "$host" in [0-9]*) host="_$host" ;; esac
+
+# Topic segment is "joystick<N>", not a bare "<N>": ROS name tokens may not
+# start with a digit, so /<host>/joy/0 is illegal — /<host>/joy/joystick0 is fine.
+TOPIC="/${host}/joy/joystick${N}"
+echo "joy-publish: ${DEV} (key=${key}) -> ${TOPIC}"
+
+# ROS setup scripts reference unbound variables; relax nounset before sourcing
+# (we exec straight after, so it need not be restored).
+set +u
+# shellcheck disable=SC1090
+source /opt/ros/{{ ros_version }}/setup.bash
+exec ros2 run joy_linux joy_linux_node --ros-args \
+  -p dev:="${DEV}" \
+  -p autorepeat_rate:={{ joy_autorepeat_rate }} \
+  -p deadzone:={{ joy_deadzone }} \
+  -r __node:="joy_${host}_${N}" \
+  -r joy:="${TOPIC}"
