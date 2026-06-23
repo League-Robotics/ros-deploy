@@ -66,6 +66,20 @@ install_joy: false
 # from the encrypted dotconfig secrets (WIFI_MESH_PSK). Enabled for raspberry_pis.
 configure_wifi: false
 
+# ── Fleet packages (roles/fleet_packages) ────────────────
+# ROS packages collected from other repos in the LeagueRobotics GitHub org. A
+# repo opts in by carrying the `fleet_topic` GitHub topic and a fleet.yaml
+# manifest at its root (see docs/fleet-packages.md). The control machine scans
+# the org, clones into .fleet/staging, and writes .fleet/packages.lock.yml; each
+# node then builds the packages whose manifest targets its inventory group.
+fleet_org: LeagueRobotics
+fleet_topic: fleet-ros-package
+
+# Whether the site/fleet_packages playbook re-scans GitHub before distributing.
+# Set false (e.g. -e fleet_collect=false) to deploy from the committed lockfile
+# without contacting GitHub — reproducible / offline runs.
+fleet_collect: true
+
 # Docker image tags used in docker-compose templates
 ros_humble_image: "ros:humble-ros-base"
 ros_kilted_image: "ros:kilted-ros-base"

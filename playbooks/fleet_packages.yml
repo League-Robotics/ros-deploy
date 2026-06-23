@@ -1,0 +1,27 @@
+---
+# playbooks/fleet_packages.yml
+# Collect ROS 2 packages from the LeagueRobotics org and distribute them to the
+# fleet. Two stages: (1) the control machine scans the org + clones into .fleet/
+# staging, writing .fleet/packages.lock.yml; (2) each node rsyncs the packages
+# targeted at it and builds them. See docs/fleet-packages.md.
+#
+# Run standalone:  ansible-playbook playbooks/fleet_packages.yml
+# Skip collection (reuse the committed lockfile):  -e fleet_collect=false
+
+- name: Collect fleet ROS packages from the LeagueRobotics org
+  hosts: localhost
+  gather_facts: false
+  run_once: true
+  tasks:
+    - name: Run package collection (discover + clone + lock)
+      ansible.builtin.command:
+        cmd: python3 {{ playbook_dir }}/../scripts/collect_fleet_packages.py --org {{ fleet_org }} --topic {{ fleet_topic }}
+        chdir: "{{ playbook_dir }}/.."
+      changed_when: false
+      when: fleet_collect | default(true)
+
+- name: Distribute and build fleet ROS packages
+  hosts: ros_nodes
+  become: true
+  roles:
+    - fleet_packages

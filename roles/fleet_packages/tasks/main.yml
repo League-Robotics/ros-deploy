@@ -1,0 +1,118 @@
+---
+# roles/fleet_packages/tasks/main.yml
+# Distributes the ROS 2 packages collected from the LeagueRobotics org. The
+# control machine produces .fleet/packages.lock.yml (scripts/collect_fleet_packages.py);
+# here we select the packages targeted at THIS host (by inventory group), rsync
+# their sources into the shared colcon workspace, and build them. Modeled on
+# roles/heartbeat. The overlay that puts them on PATH is already managed by
+# roles/heartbeat (/etc/profile.d/ros_overlay.sh) + roles/ros_user.
+
+- name: Check for the generated fleet lockfile
+  ansible.builtin.stat:
+    path: "{{ fleet_lockfile }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: fleet_lock_stat
+
+- name: Note when no lockfile is present (nothing to distribute)
+  ansible.builtin.debug:
+    msg: >-
+      No fleet lockfile at {{ fleet_lockfile }}. Run scripts/collect_fleet_packages.py
+      (or the collection play with fleet_collect=true) first. Skipping fleet packages.
+  when: not fleet_lock_stat.stat.exists
+
+- name: Distribute and build fleet packages
+  when: fleet_lock_stat.stat.exists
+  block:
+    - name: Load the fleet package lockfile
+      ansible.builtin.include_vars:
+        file: "{{ fleet_lockfile }}"
+        name: fleet_lock
+
+    # A package applies to this host when any of its declared groups is one of
+    # the host's inventory groups, or the special value 'all' (every ros_nodes host).
+    - name: Start with an empty selection
+      ansible.builtin.set_fact:
+        fleet_selected: []
+
+    - name: Select packages targeted at this host
+      ansible.builtin.set_fact:
+        fleet_selected: "{{ fleet_selected + [item] }}"
+      loop: "{{ fleet_lock.packages | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: item.groups | default([]) | intersect(group_names + ['all']) | length > 0
+
+    - name: Report selected fleet packages
+      ansible.builtin.debug:
+        msg: "Fleet packages for {{ inventory_hostname }}: {{ fleet_selected | map(attribute='name') | list }}"
+
+    - name: Build selected fleet packages
+      when: fleet_selected | length > 0
+      block:
+        - name: Ensure colcon workspace src/ directory exists
+          ansible.builtin.file:
+            path: "{{ fleet_workspace_dir }}/src"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Ensure python3-colcon-common-extensions is installed
+          ansible.builtin.apt:
+            name: python3-colcon-common-extensions
+            state: present
+
+        - name: Sync fleet package sources into the workspace
+          ansible.posix.synchronize:
+            src: "{{ fleet_repo_root }}/{{ item.src }}/"
+            dest: "{{ fleet_workspace_dir }}/src/{{ item.name }}/"
+            delete: true
+            rsync_opts:
+              - "--exclude=build"
+              - "--exclude=install"
+              - "--exclude=log"
+              - "--exclude=__pycache__"
+              - "--exclude=*.egg-info"
+              - "--exclude=.git"
+          loop: "{{ fleet_selected }}"
+          loop_control:
+            label: "{{ item.name }}"
+          register: fleet_sync
+
+        - name: Check which fleet packages are already built
+          ansible.builtin.stat:
+            path: "{{ fleet_workspace_dir }}/install/{{ item.name }}"
+          loop: "{{ fleet_selected }}"
+          loop_control:
+            label: "{{ item.name }}"
+          register: fleet_install_stat
+
+        - name: Resolve ROS dependencies for fleet packages (rosdep)
+          ansible.builtin.shell: |
+            set -eo pipefail
+            source /opt/ros/{{ ros_version }}/setup.bash
+            if [ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]; then
+              rosdep init
+            fi
+            rosdep update --rosdistro {{ ros_version }}
+            cd {{ fleet_workspace_dir }}
+            rosdep install --from-paths src --ignore-src -y
+          args:
+            executable: /bin/bash
+          when: fleet_sync is changed
+          changed_when: false
+
+        - name: Build fleet packages with colcon
+          ansible.builtin.shell: |
+            set -eo pipefail
+            source /opt/ros/{{ ros_version }}/setup.bash
+            cd {{ fleet_workspace_dir }}
+            colcon build --packages-select {{ fleet_selected | map(attribute='name') | join(' ') }} --symlink-install
+          args:
+            executable: /bin/bash
+          when: >-
+            fleet_sync is changed
+            or fleet_install_stat.results | rejectattr('stat.exists') | list | length > 0
+          changed_when: true

@@ -37,6 +37,29 @@
   roles:
     - heartbeat
 
+# Collect ROS packages from the LeagueRobotics org (repos tagged with the fleet
+# topic + a fleet.yaml manifest) and build the ones targeted at each node. The
+# control machine clones into .fleet/staging and writes .fleet/packages.lock.yml;
+# set fleet_collect=false to deploy from the committed lockfile without GitHub.
+# See docs/fleet-packages.md.
+- name: Collect fleet ROS packages from the LeagueRobotics org
+  hosts: localhost
+  gather_facts: false
+  run_once: true
+  tasks:
+    - name: Run package collection (discover + clone + lock)
+      ansible.builtin.command:
+        cmd: python3 {{ playbook_dir }}/../scripts/collect_fleet_packages.py --org {{ fleet_org }} --topic {{ fleet_topic }}
+        chdir: "{{ playbook_dir }}/.."
+      changed_when: false
+      when: fleet_collect | default(true)
+
+- name: Distribute and build fleet ROS packages
+  hosts: ros_nodes
+  become: true
+  roles:
+    - fleet_packages
+
 - name: Install and run ROS 2 cameras
   hosts: ros_nodes
   become: true

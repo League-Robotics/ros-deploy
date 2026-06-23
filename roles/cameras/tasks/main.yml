@@ -100,6 +100,32 @@
     daemon_reload: true
   when: cameras_color_relay | bool
 
+# Teardown: if the relay is disabled, remove any previously-deployed relay so the
+# flag is declarative. (Stock-libcamera hosts must NOT run it — it would swap R/B.)
+- name: Remove camera colour relay when disabled
+  when: not (cameras_color_relay | bool)
+  block:
+    - name: Check whether the colour relay unit is present
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ cameras_color_relay_service_name }}.service"
+      register: _cameras_color_relay_unit
+
+    - name: Stop and disable the colour relay
+      ansible.builtin.systemd:
+        name: "{{ cameras_color_relay_service_name }}"
+        state: stopped
+        enabled: false
+      when: _cameras_color_relay_unit.stat.exists
+
+    - name: Remove the colour relay unit and script
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/etc/systemd/system/{{ cameras_color_relay_service_name }}.service"
+        - "{{ cameras_config_dir }}/camera_color_relay.py"
+      notify: Reload systemd
+
 # Optional: serve the camera topics as MJPEG over HTTP (browser viewing).
 - name: Install web_video_server
   ansible.builtin.apt:
@@ -128,6 +154,28 @@
     state: started
     daemon_reload: true
   when: cameras_web_video_server | bool
+
+# Teardown: if web_video_server is disabled, remove a previously-deployed unit.
+- name: Remove web_video_server when disabled
+  when: not (cameras_web_video_server | bool)
+  block:
+    - name: Check whether the web_video_server unit is present
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ cameras_web_video_service_name }}.service"
+      register: _cameras_web_video_unit
+
+    - name: Stop and disable web_video_server
+      ansible.builtin.systemd:
+        name: "{{ cameras_web_video_service_name }}"
+        state: stopped
+        enabled: false
+      when: _cameras_web_video_unit.stat.exists
+
+    - name: Remove the web_video_server unit
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ cameras_web_video_service_name }}.service"
+        state: absent
+      notify: Reload systemd
 
 # Watchdog: restart the cameras automatically if they stall (no frames).
 - name: Deploy camera watchdog script
@@ -158,3 +206,33 @@
     state: started
     daemon_reload: true
   when: cameras_watchdog | bool
+
+# Teardown: if the watchdog is disabled, remove a previously-deployed timer,
+# service, and probe script so it stops restarting the cameras.
+- name: Remove the camera watchdog when disabled
+  when: not (cameras_watchdog | bool)
+  block:
+    - name: Check whether the watchdog timer is present
+      ansible.builtin.stat:
+        path: /etc/systemd/system/camera-watchdog.timer
+      register: _cameras_watchdog_timer
+
+    - name: Stop and disable the watchdog timer and service
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+      loop:
+        - camera-watchdog.timer
+        - camera-watchdog.service
+      when: _cameras_watchdog_timer.stat.exists
+
+    - name: Remove the watchdog units and probe script
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/camera-watchdog.timer
+        - /etc/systemd/system/camera-watchdog.service
+        - "{{ cameras_config_dir }}/camera-watchdog.sh"
+      notify: Reload systemd

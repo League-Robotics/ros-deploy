@@ -1,0 +1,15 @@
+---
+# roles/fleet_packages/defaults/main.yml
+# Distributes ROS 2 packages collected from the LeagueRobotics org (see
+# scripts/collect_fleet_packages.py and docs/fleet-packages.md). Packages whose
+# declared groups intersect this host's inventory groups are rsync'd into the
+# shared colcon workspace and built. Mirrors the roles/heartbeat pattern.
+
+# System-wide colcon workspace (same one heartbeat uses). The overlay that puts
+# these packages on PATH is already managed by roles/heartbeat + roles/ros_user.
+fleet_workspace_dir: /opt/ros_ws
+
+# Generated lockfile + staging dir produced by the collection script on the
+# control machine. Paths in the lockfile's `src` are relative to the repo root.
+fleet_lockfile: "{{ playbook_dir }}/../.fleet/packages.lock.yml"
+fleet_repo_root: "{{ playbook_dir }}/.."

@@ -9,3 +9,9 @@
 .venv/
 __pycache__/
 *.pyc
+
+# Fleet package collection (scripts/collect_fleet_packages.py). The cloned
+# staging workspace and generated vcstool manifest are throwaway; the lockfile
+# (.fleet/packages.lock.yml) is committed as the auditable deploy record.
+.fleet/staging/
+.fleet/fleet.repos

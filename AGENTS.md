@@ -39,6 +39,9 @@ roles/
                              camera_node per camera as a systemd service.
                              On Pi 5/Ubuntu, builds the Raspberry Pi libcamera
                              fork (cameras_build_rpi_libcamera) so the CFE works.
+  heartbeat/                 Builds the local ros_pkgs/heartbeat package on nodes
+  fleet_packages/            Distributes ROS packages collected from other
+                             LeagueRobotics repos (see docs/fleet-packages.md)
   ros_docker/                docker-compose + systemd for containerised ROS
   docker/                    Docker CE installation
   xwindows/                  sshd X11Forwarding + xauth + optional Xvfb
@@ -49,6 +52,10 @@ scripts/
   bootstrap-ansible-user.sh  Shell wrapper: decrypts key → runs bootstrap.yml
   set-static-ip.sh           Configure a static IP on a remote host via SSH
   ros-mac-shell.sh           SSH into the macvm VM with X11 → XQuartz (rviz/rqt)
+  collect_fleet_packages.py  Scan the LeagueRobotics org for fleet ROS packages,
+                             clone them, write .fleet/packages.lock.yml
+docs/
+  fleet-packages.md          How other repos ship ROS packages to the fleet
 config/                      dotconfig tree (keys, secrets, env files)
   keys/ansible               SOPS-encrypted ansible private key
   keys/ansible.pub           Ansible public key (plaintext)
@@ -134,6 +141,14 @@ domain like any physical node — containers/OrbStack are NAT-only and can't.
 The VM is created once via UTM's GUI, then onboarded with the **same** flow as
 any host (bootstrap → site.yml).  There is intentionally **no Mac-specific role
 or playbook**.  See README "ROS on a Mac (UTM)".  GUI: `scripts/ros-mac-shell.sh`.
+
+### Distribute a ROS package from another LeagueRobotics repo
+
+The package's repo adds the GitHub topic `fleet-ros-package` + a `fleet.yaml`
+manifest at its root; `ros-deploy` discovers, clones, and builds it onto the
+nodes the manifest targets. No change needed in this repo. Full contract +
+workflow: **`docs/fleet-packages.md`**. Control machine needs `vcstool`
+(`gh` CLI recommended). Deploy: `ansible-playbook playbooks/fleet_packages.yml`.
 
 ### Change the ROS version on a host
 

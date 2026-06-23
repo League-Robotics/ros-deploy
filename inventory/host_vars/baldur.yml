@@ -1,0 +1,30 @@
+# inventory/host_vars/baldur.yml
+# Per-host overrides for `baldur` (Raspberry Pi 4 Model B, Ubuntu 24.04).
+# Ubuntu 24.04 → ROS 2 Kilted Kaiju.
+
+# ── Cameras ───────────────────────────────────────────────
+# baldur has a single CSI camera: an IMX219 (Raspberry Pi Camera Module v2),
+# detected at i2c@1/imx219@10. Install camera_ros and run one node, publishing
+# under /camera0/* on ROS_DOMAIN_ID 42 for fleet-wide viewing.
+install_cameras: true
+# Pi 4 uses the VC4/Unicam libcamera pipeline (bcm2835-unicam), NOT the Pi 5
+# CFE/PiSP. The upstream libcamera shipped with camera_ros drives that path, so
+# the rpi-libcamera fork build (needed on Pi 5, e.g. vidar) is NOT required here.
+cameras_build_rpi_libcamera: false
+# Serve the camera as MJPEG over HTTP (view in a browser, e.g. from the Mac):
+#   http://baldur:8080/stream_viewer?topic=/camera0/camera/image_raw
+cameras_web_video_server: true
+# NO colour relay on baldur. The relay exists to undo a camera_ros R/B swap seen
+# with vidar's rpi-libcamera FORK (Pi 5). baldur runs STOCK Ubuntu libcamera
+# (Pi 4 / vc4 pipeline), which already publishes correct RGB on image_raw — so
+# the relay would *introduce* the swap. View /camera0/camera/image_raw directly.
+cameras_color_relay: false
+# Auto-restart the camera if libcamera stalls (publishes nothing without crashing).
+cameras_watchdog: true
+cameras_list:
+  - namespace: camera0
+    camera: 0
+    width: 640
+    height: 480
+    format: RGB888
+    frame_id: camera0_optical_frame
