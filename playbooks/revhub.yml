@@ -1,0 +1,14 @@
+---
+# playbooks/revhub.yml
+# Install the REV Hub control library (rhsp) + serial access (dialout + the
+# /dev/revhub udev symlink) on hosts that drive a REV Robotics Hub.
+# Run: ansible-playbook playbooks/revhub.yml --limit baldur
+#
+# Enable per host with `install_revhub: true` (set for baldur in host_vars).
+
+- name: Install the REV Hub control library + serial access
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: revhub
+      when: install_revhub | default(false)

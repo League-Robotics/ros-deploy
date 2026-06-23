@@ -1,0 +1,18 @@
+---
+# roles/xdrive/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart xdrive driver
+  ansible.builtin.systemd:
+    name: "{{ xdrive_driver_service_name }}"
+    state: restarted
+  when: xdrive_run_driver | bool
+
+- name: Restart joy to twist
+  ansible.builtin.systemd:
+    name: "{{ xdrive_joy_service_name }}"
+    state: restarted
+  when: xdrive_run_joy_to_twist | bool

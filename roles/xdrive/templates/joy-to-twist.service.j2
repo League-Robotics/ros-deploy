@@ -1,0 +1,17 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=Joystick -> Twist mapper for the X-drive (publishes cmd_vel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ xdrive_user }}
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && source {{ xdrive_workspace_dir }}/install/setup.bash && exec ros2 run xdrive joy_to_twist --ros-args -p joy_topic:={{ xdrive_joy_topic }} -p cmd_vel_topic:={{ xdrive_cmd_vel_topic }} -p deadzone:={{ xdrive_joy_deadzone }} -p max_linear:={{ xdrive_joy_max_linear }} -p max_angular:={{ xdrive_joy_max_angular }} -p axis_forward:={{ xdrive_joy_axis_forward }} -p axis_strafe:={{ xdrive_joy_axis_strafe }} -p axis_yaw:={{ xdrive_joy_axis_yaw }} -p invert_forward:={{ xdrive_joy_invert_forward | string | lower }} -p invert_strafe:={{ xdrive_joy_invert_strafe | string | lower }} -p invert_yaw:={{ xdrive_joy_invert_yaw | string | lower }}'
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

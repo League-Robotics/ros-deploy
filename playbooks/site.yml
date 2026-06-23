@@ -81,6 +81,24 @@
     - role: joy
       when: install_joy | default(false)
 
+# REV Hub serial library must be present before the xdrive driver service starts.
+- name: Install the REV Hub control library + serial access
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: revhub
+      when: install_revhub | default(false)
+
+# Build the in-repo xdrive package and run its services: the driver on the robot
+# (xdrive_run_driver), the joystick->Twist mapper on the operator host
+# (xdrive_run_joy_to_twist).
+- name: Build xdrive and run the X-drive teleop services
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: xdrive
+      when: (xdrive_run_driver | default(false)) or (xdrive_run_joy_to_twist | default(false))
+
 - name: Configure X Windows forwarding
   hosts: ros_all
   become: true

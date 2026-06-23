@@ -1,0 +1,4 @@
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# Stable symlink + dialout group for the REV Robotics Hub (FTDI FT230X bridge).
+# Confirm idVendor/idProduct/serial with `udevadm info -a -n /dev/ttyUSB0`.
+SUBSYSTEM=="tty", SUBSYSTEMS=="usb", ATTRS{idVendor}=="{{ revhub_usb_vendor_id }}", ATTRS{idProduct}=="{{ revhub_usb_product_id }}"{% if revhub_usb_serial | length > 0 %}, ATTRS{serial}=="{{ revhub_usb_serial }}"{% endif %}, SYMLINK+="{{ revhub_serial_link }}", GROUP="{{ revhub_device_group }}", MODE="0660"

@@ -60,6 +60,15 @@ install_rosbridge: false
 # /<hostname>/joy/<N>. Enabled for the raspberry_pis group.
 install_joy: false
 
+# ── REV Hub serial + X-drive teleop ───────────────────────
+# install_revhub: install the rhsp REV Hub control library + serial (dialout +
+#   /dev/revhub udev) so a node can drive a REV Robotics Hub over USB serial
+#   (roles/revhub). Enabled per host (baldur).
+# The xdrive role (roles/xdrive) builds the in-repo ros_pkgs/xdrive package and
+# runs its nodes where flagged: xdrive_run_driver (cmd_vel -> motors, on the
+# robot) and xdrive_run_joy_to_twist (Joy -> cmd_vel, on the operator station).
+install_revhub: false
+
 # ── Fleet WiFi ────────────────────────────────────────────
 # Whether to manage the host's WiFi connection (roles/wifi). Keeps the Pis on
 # the shared "Busboom Mesh" SSID so DDS multicast discovery works. The PSK comes

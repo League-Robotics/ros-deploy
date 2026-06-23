@@ -1,0 +1,53 @@
+---
+# roles/revhub/tasks/main.yml
+# Make `import rhsp` work for the system python3 that ROS uses, give the drive
+# service user serial access, and (optionally) pin a stable /dev/revhub symlink.
+
+- name: Install pyserial + pip (rhsp runtime dep; PEP668-safe via apt)
+  ansible.builtin.apt:
+    name: "{{ revhub_apt_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check whether rhsp is already importable
+  ansible.builtin.command: "{{ revhub_python }} -c 'import rhsp'"
+  register: revhub_import_probe
+  changed_when: false
+  failed_when: false
+
+- name: Install rhsp into system site-packages (git, no deps, PEP668 override)
+  ansible.builtin.pip:
+    name: "{{ revhub_pip_spec }}"
+    executable: /usr/bin/pip3
+    state: "{{ 'forcereinstall' if (revhub_version | length > 0) else 'present' }}"
+    extra_args: "--break-system-packages --no-deps"
+  when: revhub_import_probe.rc != 0 or (revhub_version | length > 0)
+
+- name: Ensure the drive service user can access serial devices (dialout)
+  ansible.builtin.user:
+    name: "{{ revhub_user }}"
+    groups: "{{ revhub_device_group }}"
+    append: true
+
+- name: Deploy REV hub udev rule (stable /dev/{{ revhub_serial_link }} symlink)
+  ansible.builtin.template:
+    src: 99-revhub.rules.j2
+    dest: "{{ revhub_udev_rule_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: revhub_udev_symlink | bool
+  notify:
+    - Reload udev rules
+    - Trigger udev for tty devices
+
+# Teardown when the symlink is disabled, so the flag is declarative.
+- name: Remove REV hub udev rule when disabled
+  ansible.builtin.file:
+    path: "{{ revhub_udev_rule_path }}"
+    state: absent
+  when: not (revhub_udev_symlink | bool)
+  notify:
+    - Reload udev rules
+    - Trigger udev for tty devices

@@ -1,0 +1,43 @@
+---
+# roles/xdrive/defaults/main.yml
+# Build the in-repo `xdrive` ROS package into the shared colcon workspace
+# (modeled on roles/heartbeat) and optionally run its nodes as systemd services
+# (modeled on roles/cameras): the driver on the robot (baldur), the
+# joystick->Twist mapper on the operator station (ali).
+
+xdrive_workspace_dir: /opt/ros_ws          # same overlay as heartbeat/fleet
+xdrive_user: "{{ ros_user_name | default('ros') }}"   # already in dialout via roles/ros_user
+
+# Which services THIS host runs (set per host in inventory/host_vars).
+xdrive_run_driver: false
+xdrive_run_joy_to_twist: false
+
+xdrive_driver_service_name: xdrive-driver
+xdrive_joy_service_name: joy-to-twist
+
+# ── xdrive_driver params (robot side) ───────────────────────
+xdrive_serial_port: "auto"                 # "auto"/"" => rhsp enumerates the hub
+xdrive_cmd_vel_topic: /cmd_vel
+xdrive_joint_state_topic: wheel_states
+xdrive_max_power: 4000                     # BENCH-SAFE default; raise once mapping verified
+xdrive_cmd_timeout_ms: 500
+xdrive_feedback_rate_hz: 10.0              # encoder/wheel_states publish rate (commands are event-driven)
+xdrive_wheel_signs: "[1,1,1,1]"            # per-wheel flips [fl,fr,rl,rr]; tune on the stand
+xdrive_motor_ports: "[0,1,2,3]"            # hub port per wheel [fl,fr,rl,rr]; set via motor-id tool
+xdrive_forward_scale: 1.0
+xdrive_strafe_scale: 1.0
+xdrive_yaw_scale: 1.0
+
+# ── joy_to_twist params (operator side) ─────────────────────
+xdrive_joy_topic: /ali/joy/joystick0
+xdrive_joy_deadzone: 0.08
+xdrive_joy_max_linear: 1.0
+xdrive_joy_max_angular: 1.0
+# Gamepad axis mapping (defaults = Logitech Dual Action, analog). Determined by
+# coaching with the joy-watch tool; override in host_vars.
+xdrive_joy_axis_forward: 1                 # left stick Y -> linear.x
+xdrive_joy_axis_strafe: 0                  # left stick X -> linear.y
+xdrive_joy_axis_yaw: 2                     # right stick X -> angular.z
+xdrive_joy_invert_forward: true            # sticks read negative when pushed up/left
+xdrive_joy_invert_strafe: true
+xdrive_joy_invert_yaw: true

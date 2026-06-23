@@ -1,0 +1,131 @@
+---
+# roles/xdrive/tasks/main.yml
+# Build the in-repo xdrive package into the shared colcon workspace, then run the
+# requested nodes as systemd services. The overlay-sourcing profile snippet
+# (/etc/profile.d/ros_overlay.sh) is owned by roles/heartbeat, so we don't touch it.
+
+# ── Build (mirrors roles/heartbeat) ──────────────────────────────────────────
+- name: Ensure colcon workspace src/ directory exists
+  ansible.builtin.file:
+    path: "{{ xdrive_workspace_dir }}/src"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Sync xdrive package sources into the workspace
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/../ros_pkgs/xdrive/"
+    dest: "{{ xdrive_workspace_dir }}/src/xdrive/"
+    delete: true
+    rsync_opts:
+      - "--exclude=build"
+      - "--exclude=install"
+      - "--exclude=log"
+      - "--exclude=__pycache__"
+      - "--exclude=*.egg-info"
+  register: xdrive_sync
+
+- name: Ensure python3-colcon-common-extensions is installed
+  ansible.builtin.apt:
+    name: python3-colcon-common-extensions
+    state: present
+
+- name: Check whether xdrive install artifacts already exist
+  ansible.builtin.stat:
+    path: "{{ xdrive_workspace_dir }}/install/xdrive"
+  register: xdrive_install_stat
+
+- name: Build xdrive package with colcon
+  ansible.builtin.shell: |
+    set -eo pipefail
+    source /opt/ros/{{ ros_version }}/setup.bash
+    cd {{ xdrive_workspace_dir }}
+    colcon build --packages-select xdrive --symlink-install
+  args:
+    executable: /bin/bash
+  when: xdrive_sync is changed or not xdrive_install_stat.stat.exists
+  changed_when: true
+  notify:
+    - Restart xdrive driver
+    - Restart joy to twist
+
+# ── xdrive_driver service (robot side: baldur) ───────────────────────────────
+- name: Deploy xdrive driver systemd unit
+  ansible.builtin.template:
+    src: xdrive-driver.service.j2
+    dest: "/etc/systemd/system/{{ xdrive_driver_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  when: xdrive_run_driver | bool
+  notify:
+    - Reload systemd
+    - Restart xdrive driver
+
+- name: Enable and start the xdrive driver
+  ansible.builtin.systemd:
+    name: "{{ xdrive_driver_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: xdrive_run_driver | bool
+
+- name: Remove the xdrive driver service when disabled
+  when: not (xdrive_run_driver | bool)
+  block:
+    - name: Check whether the xdrive driver unit is present
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ xdrive_driver_service_name }}.service"
+      register: _xdrive_driver_unit
+    - name: Stop and disable the xdrive driver
+      ansible.builtin.systemd:
+        name: "{{ xdrive_driver_service_name }}"
+        state: stopped
+        enabled: false
+      when: _xdrive_driver_unit.stat.exists
+    - name: Remove the xdrive driver unit
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ xdrive_driver_service_name }}.service"
+        state: absent
+      notify: Reload systemd
+
+# ── joy_to_twist service (operator side: ali) ────────────────────────────────
+- name: Deploy joy_to_twist systemd unit
+  ansible.builtin.template:
+    src: joy-to-twist.service.j2
+    dest: "/etc/systemd/system/{{ xdrive_joy_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  when: xdrive_run_joy_to_twist | bool
+  notify:
+    - Reload systemd
+    - Restart joy to twist
+
+- name: Enable and start joy_to_twist
+  ansible.builtin.systemd:
+    name: "{{ xdrive_joy_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: xdrive_run_joy_to_twist | bool
+
+- name: Remove the joy_to_twist service when disabled
+  when: not (xdrive_run_joy_to_twist | bool)
+  block:
+    - name: Check whether the joy_to_twist unit is present
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ xdrive_joy_service_name }}.service"
+      register: _xdrive_joy_unit
+    - name: Stop and disable joy_to_twist
+      ansible.builtin.systemd:
+        name: "{{ xdrive_joy_service_name }}"
+        state: stopped
+        enabled: false
+      when: _xdrive_joy_unit.stat.exists
+    - name: Remove the joy_to_twist unit
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ xdrive_joy_service_name }}.service"
+        state: absent
+      notify: Reload systemd

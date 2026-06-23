@@ -1,0 +1,39 @@
+---
+# roles/revhub/defaults/main.yml
+# Install the REV Hub control library (rhsp) + serial access so a ROS node can
+# drive a REV Robotics Control/Expansion Hub over USB serial. The hub presents
+# as an FTDI FT230X USB-serial bridge (e.g. baldur: 0403:6015, serial DQ2EXYCG,
+# /dev/ttyUSB0). rhsp talks the REV Hub Serial Protocol at 460800 baud and
+# enforces a 2.5 s keep-alive fail-safe (motors stop if the driver goes quiet).
+#
+# Enable per host with `install_revhub: true` (set for baldur).
+install_revhub: false
+
+# pyserial is rhsp's only runtime dependency — install from apt so it's PEP668
+# friendly and not shadowed by pip. pip itself for the git install of rhsp.
+revhub_apt_packages:
+  - python3-serial
+  - python3-pip
+
+# rhsp is git-only (not on PyPI/apt). Install into the SAME system python3 that
+# `ros2 run` uses, with --break-system-packages (Ubuntu 24.04 is PEP668-managed)
+# and --no-deps (don't let pip pull a second pyserial over the apt one).
+revhub_git_url: "git+https://github.com/League-Robotics/python-serial-hub-control"
+revhub_version: ""            # "" = default branch; set "<tag-or-sha>" to pin
+revhub_pip_spec: "{{ revhub_git_url }}{{ ('@' + revhub_version) if (revhub_version | length > 0) else '' }}"
+revhub_python: /usr/bin/python3
+
+# Service account that opens the serial device. The shared `ros` account is
+# already in dialout (roles/ros_user); re-assert membership defensively.
+revhub_user: "{{ ros_user_name | default('ros') }}"
+revhub_device_group: dialout
+
+# Optional stable /dev symlink for the hub (the driver can also auto-discover
+# with rhsp.enumerate_hubs(); the symlink is convenience + correct group).
+# Confirm idVendor/idProduct/serial with `udevadm info -a -n /dev/ttyUSB0`.
+revhub_udev_symlink: true
+revhub_udev_rule_path: /etc/udev/rules.d/99-revhub.rules
+revhub_serial_link: revhub            # -> /dev/revhub
+revhub_usb_vendor_id: "0403"          # FTDI
+revhub_usb_product_id: "6015"         # FT230X
+revhub_usb_serial: ""                 # "" = match any FTDI 0403:6015; set e.g. "DQ2EXYCG" to pin one hub

@@ -1,0 +1,18 @@
+# inventory/host_vars/ali.yml
+# Per-host overrides for `ali` (Raspberry Pi 4 Model B, Ubuntu 24.04) — the
+# operator station. Ubuntu 24.04 → ROS 2 Kilted Kaiju.
+#
+# ali is in the [raspberry_pis] group, so it already gets:
+#   install_joy: true      (plug-and-play Joy publisher -> /ali/joy/joystick0)
+#   configure_wifi: true   (joins Busboom Mesh so it shares baldur's DDS domain)
+#   configure_desktop: true (VNC)
+# A Logitech Dual Action gamepad is attached (js0).
+
+# ── X-drive teleop ────────────────────────────────────────
+# Map the joystick to /cmd_vel for the fleet; baldur's xdrive_driver consumes it.
+xdrive_run_joy_to_twist: true
+xdrive_run_driver: false          # ali has no hub
+# The Logitech Dual Action gamepad is js1 -> /ali/joy/joystick1 (joystick0 is the
+# Sipeed NanoKVM USB device, per /var/lib/ros-joy/index.map). Listen to joystick1.
+xdrive_joy_topic: /ali/joy/joystick1
+# install_revhub stays false (default): ali has no REV Hub.

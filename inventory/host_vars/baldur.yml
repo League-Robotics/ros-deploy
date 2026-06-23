@@ -28,3 +28,24 @@ cameras_list:
     height: 480
     format: RGB888
     frame_id: camera0_optical_frame
+
+# ── X-drive teleop (REV Hub) ──────────────────────────────
+# baldur drives a 4-motor X-drive robot via a REV Hub on USB serial
+# (FTDI FT230X -> /dev/ttyUSB0, 0403:6015, serial DQ2EXYCG). The hub is found
+# automatically by rhsp.enumerate_hubs(), so serial_port stays "auto".
+install_revhub: true          # install the rhsp library + serial access (roles/revhub)
+xdrive_run_driver: true       # run the cmd_vel -> REV Hub driver service (roles/xdrive)
+xdrive_run_joy_to_twist: false  # the joystick mapping happens on ali, not here
+# BENCH: per-motor sweep showed the front motors need ~12000 (~37%) to break
+# stiction; 6553 (20%) only moved the rear pair. 16000 (~49%) gives margin so
+# full-stick commands move all four wheels. NOTE: combined commands give a wheel
+# a fraction of this, which can fall below the stiction floor (low-input deadband)
+# — tune / add min-power compensation when driving on the ground.
+# Flip any backwards wheel in xdrive_wheel_signs [fl,fr,rl,rr] during ground calibration.
+xdrive_max_power: 16000
+xdrive_cmd_timeout_ms: 500
+xdrive_wheel_signs: "[1,1,1,1]"
+# Hub port for each wheel [front_left, front_right, rear_left, rear_right],
+# from the motor-id sweep: port0=rear-right, port1=rear-left, port2=front-left,
+# port3=front-right (clockwise wiring). So FL->2, FR->3, RL->1, RR->0.
+xdrive_motor_ports: "[2,3,1,0]"
