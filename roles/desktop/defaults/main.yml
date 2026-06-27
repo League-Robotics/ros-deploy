@@ -12,6 +12,14 @@ desktop_vnc_depth: 24
 desktop_vnc_display: 1
 desktop_vnc_password: "robotics"
 
+# Display-manager session that local console logins default to. XFCE is the
+# only session this role installs (it purges GNOME/ubuntu-desktop), so the
+# stock "ubuntu" default points at a session that isn't present and the
+# console login fails with "failed to start session". VNC is unaffected
+# because it launches XFCE directly. Must match the .desktop name in
+# /usr/share/xsessions (xfce.desktop -> "xfce").
+desktop_session: xfce
+
 # Install Firefox from the Mozilla apt repository (real .deb) instead of
 # the Ubuntu snap shim, which does not work in VNC sessions. Required so
 # OAuth flows (GitHub sign-in in VS Code, etc.) can open a browser.

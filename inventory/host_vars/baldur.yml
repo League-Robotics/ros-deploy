@@ -35,7 +35,7 @@ cameras_list:
 # automatically by rhsp.enumerate_hubs(), so serial_port stays "auto".
 install_revhub: true          # install the rhsp library + serial access (roles/revhub)
 xdrive_run_driver: true       # run the cmd_vel -> REV Hub driver service (roles/xdrive)
-xdrive_run_joy_to_twist: false  # the joystick mapping happens on ali, not here
+xdrive_run_joy_to_twist: false  # the joystick mapping happens on golem, not here
 # BENCH: per-motor sweep showed the front motors need ~12000 (~37%) to break
 # stiction; 6553 (20%) only moved the rear pair. 16000 (~49%) gives margin so
 # full-stick commands move all four wheels. NOTE: combined commands give a wheel

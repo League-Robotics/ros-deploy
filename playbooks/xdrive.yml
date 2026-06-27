@@ -2,9 +2,9 @@
 # playbooks/xdrive.yml
 # Build the in-repo `xdrive` ROS package and run the X-drive teleop services:
 #   - xdrive_driver      (cmd_vel -> REV Hub motors) where xdrive_run_driver=true (baldur)
-#   - joy_to_twist       (Joy -> cmd_vel)            where xdrive_run_joy_to_twist=true (ali)
+#   - joy_to_twist       (Joy -> cmd_vel)            where xdrive_run_joy_to_twist=true (golem)
 # revhub runs first so the rhsp library is present before the driver service starts.
-# Run: ansible-playbook playbooks/xdrive.yml --limit baldur,ali
+# Run: ansible-playbook playbooks/xdrive.yml --limit baldur,golem
 
 - name: Build xdrive and deploy the X-drive teleop services
   hosts: ros_nodes

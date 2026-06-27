@@ -37,6 +37,48 @@
     group: root
     mode: "0644"
 
+# Without this, LightDM defaults users to the "ubuntu" session, which this role
+# does not install (GNOME is purged above). Console login then fails with
+# "failed to start session" even though authentication succeeds. VNC hides the
+# problem because it launches XFCE directly via xstartup.
+- name: Default the LightDM session to {{ desktop_session }} (the only installed session)
+  ansible.builtin.copy:
+    dest: /etc/lightdm/lightdm.conf.d/50-default-session.conf
+    content: |
+      # Managed by Ansible (desktop role).
+      [Seat:*]
+      user-session={{ desktop_session }}
+    owner: root
+    group: root
+    mode: "0644"
+
+# Self-heal hosts provisioned before the default above existed: their users
+# already have "ubuntu" written into ~/.dmrc and AccountsService, which LightDM
+# prefers over the system default. Rewrite only the broken "ubuntu" value so we
+# never clobber a deliberately-chosen, installed session.
+- name: Repair stale "ubuntu" session pointers (AccountsService + ~/.dmrc)
+  ansible.builtin.shell: |
+    set -eu
+    changed=0
+    for f in /var/lib/AccountsService/users/*; do
+      [ -f "$f" ] || continue
+      if grep -q '^XSession=ubuntu$' "$f"; then
+        sed -i 's/^XSession=ubuntu$/XSession={{ desktop_session }}/' "$f"
+        changed=1
+      fi
+    done
+    while IFS=: read -r _ _ uid _ _ home _; do
+      [ "$uid" -ge 1000 ] && [ "$uid" -ne 65534 ] || continue
+      d="$home/.dmrc"
+      if [ -f "$d" ] && grep -q '^Session=ubuntu$' "$d"; then
+        sed -i 's/^Session=ubuntu$/Session={{ desktop_session }}/' "$d"
+        changed=1
+      fi
+    done < /etc/passwd
+    [ "$changed" -eq 1 ] && echo CHANGED || true
+  register: _session_repair
+  changed_when: "'CHANGED' in _session_repair.stdout"
+
 # ── TurboVNC (amd64 only) ─────────────────────────────────────────────────────
 
 - name: Get latest TurboVNC release version

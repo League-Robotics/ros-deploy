@@ -51,6 +51,10 @@ docker/
 scripts/
   bootstrap-ansible-user.sh  Shell wrapper: decrypts key → runs bootstrap.yml
   set-static-ip.sh           Configure a static IP on a remote host via SSH
+  flash-pi-card.sh           Flash Ubuntu 24.04 to an SD card + cloud-init
+                             pre-seed (hostname, Busboom Mesh static IP, SSH,
+                             ansible user) so a new Pi boots Ansible-ready.
+                             macOS only; see the flash-pi-card skill.
   ros-mac-shell.sh           SSH into the macvm VM with X11 → XQuartz (rviz/rqt)
   collect_fleet_packages.py  Scan the LeagueRobotics org for fleet ROS packages,
                              clone them, write .fleet/packages.lock.yml
@@ -132,6 +136,11 @@ connection uses your own credentials.
 3. Optionally set a static IP: `./scripts/set-static-ip.sh -u <user> -i <ip> <hostname>`
 4. Bootstrap: `./scripts/bootstrap-ansible-user.sh -u <user> -K <hostname>`
 5. Deploy: `ansible-playbook playbooks/site.yml --limit <hostname>`
+
+For a **brand-new Pi from a blank SD card**, `./scripts/flash-pi-card.sh`
+does the equivalent of steps 3–4 (static IP + ansible user + SSH) at flash
+time via cloud-init, so you only need steps 1–2 and 5. See the `flash-pi-card`
+skill for the guided flow.
 
 ### Running ROS on a Mac
 

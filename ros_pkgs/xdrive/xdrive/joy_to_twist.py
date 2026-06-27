@@ -16,7 +16,7 @@ from geometry_msgs.msg import Twist
 class JoyToTwist(Node):
     def __init__(self):
         super().__init__('joy_to_twist')
-        self.declare_parameter('joy_topic', '/ali/joy/joystick0')
+        self.declare_parameter('joy_topic', '/golem/joy/joystick0')
         self.declare_parameter('cmd_vel_topic', '/cmd_vel')
         self.declare_parameter('deadzone', 0.08)
         self.declare_parameter('max_linear', 1.0)

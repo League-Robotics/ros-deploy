@@ -90,7 +90,7 @@
         state: absent
       notify: Reload systemd
 
-# ── joy_to_twist service (operator side: ali) ────────────────────────────────
+# ── joy_to_twist service (operator side: golem) ──────────────────────────────
 - name: Deploy joy_to_twist systemd unit
   ansible.builtin.template:
     src: joy-to-twist.service.j2

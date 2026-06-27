@@ -3,7 +3,7 @@
 # Build the in-repo `xdrive` ROS package into the shared colcon workspace
 # (modeled on roles/heartbeat) and optionally run its nodes as systemd services
 # (modeled on roles/cameras): the driver on the robot (baldur), the
-# joystick->Twist mapper on the operator station (ali).
+# joystick->Twist mapper on the operator station (golem).
 
 xdrive_workspace_dir: /opt/ros_ws          # same overlay as heartbeat/fleet
 xdrive_user: "{{ ros_user_name | default('ros') }}"   # already in dialout via roles/ros_user
@@ -29,7 +29,7 @@ xdrive_strafe_scale: 1.0
 xdrive_yaw_scale: 1.0
 
 # ── joy_to_twist params (operator side) ─────────────────────
-xdrive_joy_topic: /ali/joy/joystick0
+xdrive_joy_topic: /golem/joy/joystick0
 xdrive_joy_deadzone: 0.08
 xdrive_joy_max_linear: 1.0
 xdrive_joy_max_angular: 1.0
