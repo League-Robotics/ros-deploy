@@ -6,3 +6,15 @@
 
 ros_version: kilted
 ros_package_variant: ros-base
+
+# REV Expansion Hub on USB serial (FTDI FT230X → /dev/revhub via roles/revhub).
+install_revhub: true
+
+# Run the cmd_vel -> REV Hub driver (roles/xdrive). Motor ports/signs and
+# max_power are the bench-safe defaults — run a motor-id sweep and copy the
+# calibration pattern from baldur.yml before driving on the ground.
+xdrive_run_driver: true
+# Namespace the topics per robot: baldur already owns the bare /cmd_vel and
+# /wheel_states on domain 42; without this, one joystick would drive both robots.
+xdrive_cmd_vel_topic: /nepr/cmd_vel
+xdrive_joint_state_topic: /nepr/wheel_states
