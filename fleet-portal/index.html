@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROS Fleet Connection Portal</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #1a1d21; --muted: #6b7280;
+    --line: #e3e6ea; --accent: #2563eb; --code-bg: #f0f2f5; --code-ink: #111827;
+    --ok: #15803d; --warn: #b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --panel: #171a20; --ink: #e6e8eb; --muted: #9aa3ad;
+      --line: #262b33; --accent: #60a5fa; --code-bg: #0b0d11; --code-ink: #e6e8eb;
+      --ok: #4ade80; --warn: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 20px; margin-bottom: 28px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 18px; margin: 34px 0 12px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0; }
+  p { margin: 10px 0; }
+  code {
+    background: var(--code-bg); color: var(--code-ink); padding: 1.5px 6px;
+    border-radius: 5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); padding: 14px 16px;
+    border-radius: 10px; overflow-x: auto; border: 1px solid var(--line);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+    margin: 12px 0;
+  }
+  pre code { background: none; padding: 0; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; margin: 16px 0;
+  }
+  .muted { color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .table-scroll { overflow-x: auto; }
+  .pill {
+    display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent);
+    font-weight: 600;
+  }
+  a { color: var(--accent); }
+  .step { display: flex; gap: 14px; margin: 14px 0; }
+  .step .n {
+    flex: 0 0 28px; height: 28px; border-radius: 999px; background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px;
+  }
+  .step .body { flex: 1; min-width: 0; }
+  .note { border-left: 3px solid var(--warn); padding: 4px 0 4px 14px; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 680px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+  .k { color: var(--ok); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>ROS Fleet Connection Portal</h1>
+  <p class="sub">Everything an agent needs to reach the robots — <strong>no usernames or passwords required.</strong></p>
+</header>
+
+<p>
+  You (an agent on this network) can connect to the ROS fleet without knowing any
+  login name or password. This page hands you a pre-authorized SSH key and a set
+  of host aliases; the ROS side is reached over WebSocket gateways that need no
+  credentials at all. Everything is served from <code>{{BASE_URL}}</code>.
+</p>
+
+<div class="panel">
+  <h2 style="margin-top:0">Quickest path — one command</h2>
+  <p>Run this on the machine you want to connect from. It fetches the fleet key,
+  installs SSH aliases, and leaves you able to <code>ssh agony</code> (and the rest)
+  with no further input:</p>
+  <pre><code>curl -fsSL {{BASE_URL}}/connect.sh | sh</code></pre>
+  <p class="muted">Then: <code>ssh agony hostname</code> — you're in as the shared
+  <code>{{SSH_USER}}</code> account. You never typed a username or password.</p>
+</div>
+
+<h2>The hosts</h2>
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr><th>Host</th><th>Address</th><th>Role</th><th>ROS over WebSocket</th><th>Notes</th></tr>
+  </thead>
+  <tbody>
+    {{FLEET_ROWS}}
+  </tbody>
+</table>
+</div>
+<p class="muted">All nodes share <code>ROS_DOMAIN_ID={{ROS_DOMAIN_ID}}</code>. Hosts with a
+<code>ws://…:9090</code> address run a <strong>rosbridge</strong> gateway.</p>
+
+<h2>How access works (so you know what you're holding)</h2>
+<div class="grid2">
+  <div class="panel">
+    <p><span class="pill">SSH</span></p>
+    <p>You authenticate with the <strong>key</strong> this portal gives you, logging
+    in as the shared <code class="k">{{SSH_USER}}</code> account. The username and key
+    path live inside the SSH config alias, so you just run <code>ssh agony</code> —
+    <strong>no password is ever entered.</strong></p>
+  </div>
+  <div class="panel">
+    <p><span class="pill">ROS</span></p>
+    <p>The gateway hosts expose <strong>rosbridge</strong> at <code>ws://&lt;host&gt;:9090</code>.
+    It requires <strong>no ROS credentials whatsoever</strong> — open a WebSocket and you
+    can publish and subscribe to any topic. Use <code>roslibpy</code> (Python) or
+    <code>roslib.js</code> (browser).</p>
+  </div>
+</div>
+
+<h2>Manual setup (if you'd rather not pipe to a shell)</h2>
+
+<div class="step">
+  <div class="n">1</div>
+  <div class="body">
+    <p><strong>Get the key.</strong> This is the one secret — it authorizes the shared
+    <code>{{SSH_USER}}</code> account on every node.</p>
+    <pre><code>curl -fsSL {{BASE_URL}}/keys/fleet_id -o ~/.ssh/fleet_id
+chmod 600 ~/.ssh/fleet_id</code></pre>
+  </div>
+</div>
+
+<div class="step">
+  <div class="n">2</div>
+  <div class="body">
+    <p><strong>Install the host aliases.</strong> This block pre-fills user + key for
+    every host, so you never supply either by hand.</p>
+    <pre><code>curl -fsSL {{BASE_URL}}/ssh_config -o ~/.ssh/fleet_config
+grep -q 'Include ~/.ssh/fleet_config' ~/.ssh/config 2>/dev/null \
+  || sed -i '1i Include ~/.ssh/fleet_config' ~/.ssh/config 2>/dev/null \
+  || echo 'Include ~/.ssh/fleet_config' >> ~/.ssh/config</code></pre>
+  </div>
+</div>
+
+<div class="step">
+  <div class="n">3</div>
+  <div class="body">
+    <p><strong>Connect.</strong></p>
+    <pre><code>ssh agony     # or torture, ali, nepr, vidar
+ssh vidar 'ros2 topic list'</code></pre>
+  </div>
+</div>
+
+<h2>Running <code>ros2</code> commands over SSH</h2>
+<p>If you SSH in and run <code>ros2</code>, you must set the domain ID and source ROS
+yourself — a non-interactive SSH session does <strong>not</strong> inherit them, so
+without this <code>ros2</code> silently talks to domain 0 and sees an empty fleet:</p>
+<pre><code>ssh agony 'ROS_DOMAIN_ID={{ROS_DOMAIN_ID}} bash -lc "source /opt/ros/*/setup.bash && ros2 topic list"'</code></pre>
+
+<h2>Talking to ROS without the ROS stack</h2>
+<p>If you can't (or don't want to) install ROS, use the rosbridge gateways. Example with
+<code>roslibpy</code>:</p>
+<pre><code>pip install roslibpy
+python3 - &lt;&lt;'PY'
+import roslibpy
+ros = roslibpy.Ros(host='agony', port=9090)   # no auth
+ros.run()
+print('topics:', ros.get_topics())
+ros.terminate()
+PY</code></pre>
+<p class="muted">The MJPEG camera streams on <code>vidar</code> are plain HTTP, no auth either:
+<code>http://vidar:8080/</code>.</p>
+
+<h2>Fleet wiki</h2>
+<p>The repo's <code>docs/wiki/</code> pages, served raw on the LAN for agents
+(index at <a href="{{BASE_URL}}/wiki">{{BASE_URL}}/wiki</a>); rendered versions live on the
+<a href="http://robots.jointheleague.org/subsystems/ros-deploy/">League Robotics hub</a>.
+Start with <a href="{{BASE_URL}}/wiki/xdrive-teleop.md">X-drive teleop</a> — running and
+troubleshooting the REV Hub robots (baldur, nepr) and the golem operator station.</p>
+
+<h2>Machine-readable</h2>
+<p>Prefer JSON? <a href="{{BASE_URL}}/fleet.json">{{BASE_URL}}/fleet.json</a> lists every
+host, the domain ID, and the wiki URLs.</p>
+
+<div class="note">
+  This is a lab-network broker. Anything that can reach this page can download the
+  fleet key from <a href="{{BASE_URL}}/keys/fleet_id">/keys/fleet_id</a>. Keep the
+  server on the trusted LAN only. If the key is ever exposed beyond it, rotate it:
+  <code>dotconfig key rm ansible &amp;&amp; dotconfig key gen ansible</code> and re-run
+  the bootstrap flow.
+</div>
+
+</div>
+</body>
+</html>

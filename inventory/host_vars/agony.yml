@@ -5,6 +5,5 @@
 # Must be an existing local user account on the host.
 desktop_user: eric
 
-# Run the rosbridge JSON/WebSocket gateway here (roles/rosbridge): non-ROS
-# clients reach the fleet's topics at ws://agony:9090 without installing ROS.
-install_rosbridge: true
+# rosbridge is enabled via membership in the [rosbridge_hosts] group (hosts.ini),
+# no per-host flag needed. agony serves the gateway at ws://agony:9090.

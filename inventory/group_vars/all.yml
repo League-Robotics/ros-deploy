@@ -49,10 +49,10 @@ ros_in_docker: false
 install_cameras: false
 
 # ── rosbridge gateway ─────────────────────────────────────
-# Whether to run rosbridge_server (roles/rosbridge): a JSON/WebSocket gateway
-# letting non-ROS clients (roslibpy, roslib.js) pub/sub ROS topics without the
-# ROS stack. Enable per host in inventory/host_vars/<host>.yml.
-install_rosbridge: false
+# rosbridge_server (roles/rosbridge) is a JSON/WebSocket gateway letting non-ROS
+# clients (roslibpy, roslib.js) pub/sub ROS topics without the ROS stack. It is
+# enabled by adding a host to the [rosbridge_hosts] group in inventory/hosts.ini
+# (no per-host flag); the playbooks target that group directly.
 
 # ── Joystick publisher ────────────────────────────────────
 # Whether to install the plug-and-play joystick publisher (roles/joy): hosts do

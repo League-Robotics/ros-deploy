@@ -68,11 +68,10 @@
       when: install_cameras | default(false)
 
 - name: Install the rosbridge WebSocket gateway (JSON bridge for non-ROS clients)
-  hosts: ros_nodes
+  hosts: rosbridge_hosts
   become: true
   roles:
     - role: rosbridge
-      when: install_rosbridge | default(false)
 
 - name: Install the plug-and-play ROS joystick publisher
   hosts: ros_nodes

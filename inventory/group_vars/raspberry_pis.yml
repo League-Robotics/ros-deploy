@@ -6,6 +6,14 @@
 # aarch64. VNC listens on display :1 (port 5901), password `desktop_vnc_password`.
 configure_desktop: true
 
+# Require a VNC password on the Pis. TigerVNC's password-less mode advertises
+# only RFB SecurityType "None", which macOS Screen Sharing.app refuses (it shows
+# "Screen Sharing requires a password to sign in"). With a password the server
+# advertises VNC-auth (RFB type 2), which Screen Sharing.app accepts. amd64
+# (TurboVNC) hosts are unaffected and keep their own all.yml default.
+desktop_vnc_no_password: false
+desktop_vnc_password: code4life
+
 # Account that owns the VNC session. Defaults to the `ansible` service account
 # (always present); override in a host's host_vars for a human login if desired.
 desktop_user: ansible

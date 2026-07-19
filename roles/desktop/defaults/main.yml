@@ -12,6 +12,14 @@ desktop_vnc_depth: 24
 desktop_vnc_display: 1
 desktop_vnc_password: "robotics"
 
+# Allow VNC connections with NO authentication (SecurityTypes None). Enabled
+# fleet-wide so any Pi desktop can be reached from macOS Screen Sharing
+# (Finder -> Connect to Server -> vnc://<host>:5901) without a password. This
+# is acceptable only because every Pi lives on the trusted "Busboom Mesh" LAN.
+# When true, the .vnc/passwd step is skipped and the server starts with
+# -SecurityTypes None. Set false to fall back to password auth.
+desktop_vnc_no_password: true
+
 # Display-manager session that local console logins default to. XFCE is the
 # only session this role installs (it purges GNOME/ubuntu-desktop), so the
 # stock "ubuntu" default points at a session that isn't present and the

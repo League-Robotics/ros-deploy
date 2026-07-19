@@ -6,7 +6,7 @@
 # ROS node (where the full stack already lives) and speaks the documented
 # rosbridge v2 protocol outward on a single port.
 #
-# Enable per host with `install_rosbridge: true` in inventory/host_vars/<host>.yml.
+# Enable a host by adding it to the [rosbridge_hosts] group in inventory/hosts.ini.
 
 # rosbridge_suite pulls in rosbridge_server (the WebSocket bridge) and rosapi
 # (topic/type introspection so clients can discover what's available).

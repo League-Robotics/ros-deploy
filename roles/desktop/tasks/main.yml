@@ -116,15 +116,20 @@
     group: "{{ desktop_user }}"
     mode: "0755"
 
+# Always (re)write the password file: a `creates:` guard would pin the password
+# forever at whatever was first provisioned, so a changed desktop_vnc_password
+# would never take. vncpasswd output is non-deterministic, so these tasks always
+# report "changed" — acceptable to keep password changes reliable.
 - name: Set VNC password (TurboVNC, amd64)
   ansible.builtin.shell: |
     echo "{{ desktop_vnc_password }}" | /opt/TurboVNC/bin/vncpasswd -f > /home/{{ desktop_user }}/.vnc/passwd
     chmod 600 /home/{{ desktop_user }}/.vnc/passwd
   become: true
   become_user: "{{ desktop_user }}"
-  args:
-    creates: "/home/{{ desktop_user }}/.vnc/passwd"
-  when: ansible_architecture == "x86_64"
+  when:
+    - ansible_architecture == "x86_64"
+    - not desktop_vnc_no_password
+  notify: Restart vncserver
 
 - name: Set VNC password (TigerVNC, aarch64)
   ansible.builtin.shell: |
@@ -132,9 +137,10 @@
     chmod 600 /home/{{ desktop_user }}/.vnc/passwd
   become: true
   become_user: "{{ desktop_user }}"
-  args:
-    creates: "/home/{{ desktop_user }}/.vnc/passwd"
-  when: ansible_architecture == "aarch64"
+  when:
+    - ansible_architecture == "aarch64"
+    - not desktop_vnc_no_password
+  notify: Restart vncserver
 
 # ── xstartup for TigerVNC ─────────────────────────────────────────────────────
 
@@ -177,6 +183,7 @@
       ExecStart=/opt/TurboVNC/bin/vncserver :{{ desktop_vnc_display }} \
         -geometry {{ desktop_vnc_geometry }} \
         -depth {{ desktop_vnc_depth }} \
+        {% if desktop_vnc_no_password %}-SecurityTypes None --I-KNOW-THIS-IS-INSECURE {% endif %}\
         -wm xfce
       ExecStop=/opt/TurboVNC/bin/vncserver -kill :{{ desktop_vnc_display }}
       Restart=on-failure
@@ -202,6 +209,7 @@
       ExecStart=/usr/bin/vncserver :{{ desktop_vnc_display }} \
         -geometry {{ desktop_vnc_geometry }} \
         -depth {{ desktop_vnc_depth }} \
+        {% if desktop_vnc_no_password %}-SecurityTypes None --I-KNOW-THIS-IS-INSECURE {% endif %}\
         -localhost no
       ExecStop=/usr/bin/vncserver -kill :{{ desktop_vnc_display }}
       Restart=on-failure
