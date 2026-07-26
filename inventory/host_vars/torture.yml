@@ -1,6 +1,6 @@
 # inventory/host_vars/torture.yml
-# Per-host overrides for the `torture` workstation (amd64, Ubuntu 22.04).
-# Ubuntu 22.04 → ROS 2 Humble (Kilted requires 24.04).
+# Per-host overrides for the `torture` workstation (amd64, Ubuntu 24.04).
+# Ubuntu 24.04 → ROS 2 Kilted Kaiju (Humble is 22.04-only).
 
-ros_version: humble
+ros_version: kilted
 ros_package_variant: ros-base
