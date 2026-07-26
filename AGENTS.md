@@ -129,32 +129,20 @@ connection uses your own credentials.
 
 ## Fleet connection portal
 
-`fleet-portal/serve.py` is a tiny stdlib-only LAN web server that hands **other**
-agents credential-free access to the fleet: it serves the `ansible` SSH key plus
-ready-made `~/.ssh/config` aliases (so a remote agent runs `ssh agony` with no
-username/password), and points at the rosbridge gateways (`ws://<host>:9090`, no
-auth) for ROS.  It also serves the `docs/wiki/*.md` pages raw at `/wiki/`.
-Full page: **`docs/wiki/fleet-portal.md`** (published to the League hub).
-
-- **URL:** `http://192.168.1.40:8770/` — an agent onboards with
-  `curl -fsSL http://192.168.1.40:8770/connect.sh | sh`.
-- **It is a plain background process, NOT a systemd service** — nothing restarts
-  it. If it's not answering, bring it back up.
+`fleet-portal/serve.py` is a stdlib-only LAN web server that gives agents on the
+garage network their connection info for the fleet, served at
+`http://192.168.1.40:8770/`.  The portal page itself documents how to connect and
+how to keep the portal running — read it there, not here (the details are kept off
+the public web on purpose).  It's a plain background process, **not** a systemd
+service; if it's not answering, restart it (kill any stale instance first, since a
+long-running one serves stale on-disk state):
 
 ```bash
-# Is it up?
-lsof -iTCP:8770 -sTCP:LISTEN -n -P
-# (Re)start it cleanly — kill any stale instance first, then relaunch:
-dotconfig key load ansible                 # ensure config/files/ansible exists
+lsof -iTCP:8770 -sTCP:LISTEN -n -P         # is it up?
+dotconfig key load ansible
 pkill -f 'fleet-portal/serve.py' || true
 nohup ./fleet-portal/serve.py >/tmp/fleet-portal.log 2>&1 &
 ```
-
-**Restart it after any change** to `serve.py`, the host list, the key, or a wiki
-page — a long-running instance keeps serving what those files looked like when it
-started, so kill-and-restart periodically to avoid drift. A restart costs only a
-~1s gap. Security: anyone who can reach `:8770` can download the fleet private
-key from `/keys/fleet_id` — keep it on the trusted LAN only.
 
 ---
 

@@ -188,6 +188,20 @@ troubleshooting the REV Hub robots (baldur, nepr) and the golem operator station
 <p>Prefer JSON? <a href="{{BASE_URL}}/fleet.json">{{BASE_URL}}/fleet.json</a> lists every
 host, the domain ID, and the wiki URLs.</p>
 
+<h2>Keeping this portal running</h2>
+<p>This portal is a plain background process — <strong>not</strong> a systemd service,
+so nothing restarts it. If it's ever not answering, bring it back up from a repo
+checkout on the host (with the key decrypted). Kill any stale instance first — a
+long-running process serves whatever <code>serve.py</code>, the host list, or the wiki
+pages looked like when it started, so restart after any change (and periodically) to
+avoid drift. A restart costs only a ~1s gap.</p>
+<pre><code># Is it up?
+lsof -iTCP:8770 -sTCP:LISTEN -n -P
+# (Re)start cleanly:
+dotconfig key load ansible
+pkill -f 'fleet-portal/serve.py' || true
+nohup ./fleet-portal/serve.py &gt;/tmp/fleet-portal.log 2&gt;&amp;1 &amp;</code></pre>
+
 <div class="note">
   This is a lab-network broker. Anything that can reach this page can download the
   fleet key from <a href="{{BASE_URL}}/keys/fleet_id">/keys/fleet_id</a>. Keep the
