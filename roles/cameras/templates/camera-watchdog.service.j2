@@ -6,3 +6,8 @@ After={{ cameras_service_name }}.service
 [Service]
 Type=oneshot
 ExecStart={{ cameras_config_dir }}/camera-watchdog.sh
+# Backstop: a oneshot with no timeout that blocks stays in `activating` forever,
+# and systemd will not fire the timer again while the unit is still activating —
+# so one hung run silently disables the watchdog permanently. Cap it at well
+# above the probe window so a slow-but-working probe is never killed early.
+TimeoutStartSec={{ (cameras_watchdog_probe_secs | int) + 45 }}

@@ -4,3 +4,16 @@
 
 ros_version: kilted
 ros_package_variant: ros-base
+
+# torture runs an XFCE + TurboVNC desktop (VNC on :1 / port 5901). Like agony
+# it is NOT in the [raspberry_pis] group, where configure_desktop is enabled
+# fleet-wide, so it must opt in explicitly here — otherwise site.yml skips the
+# desktop role and this host's working desktop is unmanaged drift.
+configure_desktop: true
+
+# Account that owns the XFCE/TurboVNC session installed by roles/desktop.
+# Must be an existing local user account on the host. Like agony, torture is a
+# workstation whose desktop belongs to `eric` (uid 1000), not the `ansible`
+# service account. Without this the role tries to start a second VNC server as
+# `ansible` on display :1, which eric's session already holds (exit status 98).
+desktop_user: eric

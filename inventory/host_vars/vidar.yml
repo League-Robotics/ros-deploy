@@ -11,27 +11,55 @@ ros_package_variant: ros-base
 # /camera0/* and /camera1/* on ROS_DOMAIN_ID 42 for fleet-wide viewing.
 install_cameras: true
 # Pi 5 + Ubuntu: build the Raspberry Pi libcamera fork so camera_ros can drive
-# the CSI cameras (upstream libcamera can't acquire the Pi CFE).
+# the CSI cameras (upstream libcamera can't acquire the Pi CFE). This is a
+# Pi 5 / CFE-PiSP requirement and is INDEPENDENT of which sensor is attached —
+# confirmed by `rp1-cfe ...csi: found subdevice ...` in dmesg.
 cameras_build_rpi_libcamera: true
 # Serve the cameras as MJPEG over HTTP (view in a browser, e.g. from the Mac):
 #   http://vidar:8080/stream_viewer?topic=/camera0/camera/image_raw
 cameras_web_video_server: true
-# camera_ros swaps R/B vs its encoding label; relay corrects it to image_color.
-# View the image_color topics (e.g. /camera0/camera/image_color).
-cameras_color_relay: true
+# NO colour relay. The relay swaps R/B to undo a camera_ros channel mix-up, but
+# these sensors are MONOCHROME — there are no R/B channels to swap. The apparent
+# "colour bug" that originally motivated the relay came from asking for RGB888
+# on a mono sensor (see below), not from a channel order problem.
+cameras_color_relay: false
 # Auto-restart the cameras if they stall (camera_ros can stop publishing
 # without crashing); web_video_server restarts with them via PartOf.
 cameras_watchdog: true
+# ── Sensors: 2x Raspberry Pi Global Shutter Camera (Sony IMX296) ──────
+# Confirmed on the hardware (2026-07-30) — NOT the IMX219 this file previously
+# claimed. dmesg reports both sensors by part number:
+#   imx296 11-001a: found IMX296LQ   -> csi@128000 (i2c-11)
+#   imx296 10-001a: found IMX296LQ   -> csi@110000 (i2c-10)
+# and `cam -l` lists two 'imx296' cameras. Same sensor as skadi, so the same
+# geometry rules apply:
+#   • Native resolution 1456x1088 (1.58 MP, 1/2.9"), global shutter.
+#   • The "LQ" part number is the MONO variant, so RGB888 is a poor fit — the old
+#     640x480-RGB888 setting made libcamera debayer/scale the raw sensor frame,
+#     which is where the colour weirdness the relay was papering over came from.
+#
+# FORMAT: use RGB888, NOT a mono format, even though the sensor is monochrome.
+# `cam -c1 -I` advertises R8, but asking for it is wrong on both Pi pipelines:
+# on skadi (Pi 4 / vc4) camera_ros dies outright with `unsupported pixel format
+# "R8"`, and here on the Pi 5 PiSP path libcamera silently rewrites the request —
+#   stream configuration adjusted from "1456x1088-R8/sYCC" to "1456x1088-SBGGR16/RAW"
+# so R8 never actually took effect; it only looked like it did. The greyscale
+# image arrives as RGB888 with R=G=B.
+#
+# Full-sensor capture keeps the global shutter's whole field of view. Frames
+# measure ~165-180KB each from the Mac and both streams answer HTTP promptly, so
+# the Pi 5 keeps up with two of them — unlike skadi's Pi 4, which had to drop to
+# 728x544 because web_video_server could not encode 1456x1088 fast enough.
 cameras_list:
   - namespace: camera0
     camera: 0
-    width: 640
-    height: 480
+    width: 1456
+    height: 1088
     format: RGB888
     frame_id: camera0_optical_frame
   - namespace: camera1
     camera: 1
-    width: 640
-    height: 480
+    width: 1456
+    height: 1088
     format: RGB888
     frame_id: camera1_optical_frame

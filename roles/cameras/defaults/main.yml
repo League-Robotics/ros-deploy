@@ -8,6 +8,16 @@
 # give a `.../image_raw/compressed` topic — important for viewing over the LAN
 # (e.g. from the Mac) without saturating the network with raw frames.
 cameras_apt_packages:
+  # The libcamera IPA (Image Processing Algorithms) modules — ipa_rpi_vc4.so
+  # and friends. WITHOUT this, libcamera enumerates the sensor and its controls
+  # but then refuses to register the camera:
+  #   ERROR RPI pipeline_base.cpp:804 Failed to load a suitable IPA library
+  #   ERROR RPI vc4.cpp:206 Failed to register camera imx219 10-0010: -22
+  # camera_ros then dies with "no cameras available". The IPA also drives AE/AGC,
+  # so a raw v4l2 grab on such a host streams at full framerate but every frame
+  # is ALL ZEROS (black) — the sensor is never told to expose. Not pulled in as a
+  # dependency of libcamera0.2 on Ubuntu 24.04, so it must be requested explicitly.
+  - libcamera-ipa
   - "ros-{{ ros_version }}-camera-ros"
   - "ros-{{ ros_version }}-camera-info-manager"
   - "ros-{{ ros_version }}-image-transport"

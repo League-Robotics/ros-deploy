@@ -27,6 +27,20 @@ def generate_launch_description():
                 # R/B swapped through web_video_server; RGB888 gives correct colour.
                 "format": "{{ cam.format }}",
 {% endif %}
+{% if cam.fps is defined %}
+                # Cap the frame rate via libcamera's FrameDurationLimits (min/max
+                # frame duration in MICROseconds — inverse of FPS).
+                #
+                # This is a correctness fix, not a tuning knob. camera_ros
+                # publishes RELIABLE with KEEP_LAST(1); left uncapped this sensor
+                # free-runs at ~30 Hz, which is faster than a Pi 4 can serve, and
+                # subscribers start losing messages ("A message was lost!!!" from
+                # `ros2 topic echo`). web_video_server's per-request streamer then
+                # never receives a frame, so it hangs forever and every later HTTP
+                # request hangs behind it — the camera looks dead while the topic
+                # still reports a healthy rate.
+                "FrameDurationLimits": [{{ (1000000 // cam.fps) | int }}, {{ (1000000 // cam.fps) | int }}],
+{% endif %}
             }],
             output="screen",
         ),

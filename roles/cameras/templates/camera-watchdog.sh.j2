@@ -7,12 +7,33 @@
 # PartOf that service, so it restarts too and re-discovers the fresh publishers.
 set -uo pipefail
 
+# ROS's setup.bash dereferences unset variables (AMENT_TRACE_SETUP_FILES,
+# AMENT_CURRENT_PREFIX, ...), so it MUST NOT be sourced under `set -u` — the
+# shell aborts with "unbound variable" before the probe ever runs and the
+# watchdog silently sits in `failed`, never restarting a stalled camera.
+# Drop -u only for the source, then restore it.
+set +u
 source /opt/ros/{{ ros_version }}/setup.bash
+set -u
+
 export ROS_DOMAIN_ID={{ ros_domain_id }}
 export HOME=/root ROS_LOG_DIR=/tmp/camera-watchdog
 
+# The probe must not run before the cameras have had a chance to start
+# publishing, or the very first timer firing after boot restarts a service that
+# was merely still warming up.
 TOPIC="/{{ cameras_list[0].namespace }}/camera/image_raw"
 MIN_RATE={{ cameras_watchdog_min_rate }}
+
+# `ros2 topic hz` needs a discovery window before it reports anything. On a
+# full-sensor mono stream the first frames can take several seconds to appear,
+# so bail out early (healthy) if the camera service itself is not even active —
+# restarting a starting/restarting service just fights with systemd.
+STATE="$(systemctl is-active {{ cameras_service_name }} 2>/dev/null || true)"
+if [ "${STATE}" != "active" ]; then
+  logger -t camera-watchdog "{{ cameras_service_name }} is ${STATE:-unknown}, not active — skipping probe"
+  exit 0
+fi
 
 # Sample the publish rate. camera_ros can not only stop but also *degrade* to a
 # fraction of a Hz, so require a minimum rate rather than just "any frames".
@@ -24,4 +45,10 @@ if [ -n "${RATE}" ] && awk "BEGIN{exit !(${RATE} >= ${MIN_RATE})}"; then
 fi
 
 logger -t camera-watchdog "camera rate ${RATE:-none} < ${MIN_RATE} Hz on ${TOPIC}; restarting {{ cameras_service_name }}"
-systemctl restart {{ cameras_service_name }}
+# --no-block is REQUIRED, not an optimisation. A plain `systemctl restart` waits
+# for the restart to finish, but this script runs from camera-watchdog.service,
+# which systemd orders against {{ cameras_service_name }} — so the restart waits
+# on a transaction that waits on us, and the watchdog hangs in `activating`
+# forever (observed on vidar and skadi). Fire and forget instead; the next timer
+# firing verifies whether the restart actually helped.
+systemctl restart --no-block {{ cameras_service_name }}

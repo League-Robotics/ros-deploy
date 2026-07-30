@@ -1,6 +1,14 @@
 # inventory/host_vars/agony.yml
 # Per-host overrides for the `agony` workstation (amd64, Ubuntu 24.04).
 
+# agony runs an XFCE + TurboVNC desktop (VNC on :1 / port 5901). It is NOT in
+# the [raspberry_pis] group, which is where configure_desktop is turned on
+# fleet-wide, so it must opt in explicitly here. Without this the desktop role
+# is skipped by site.yml and the working desktop on this host is unmanaged
+# drift — it would not survive a reflash, and fixes to roles/desktop would
+# never reach it.
+configure_desktop: true
+
 # Account that owns the XFCE/TurboVNC session installed by roles/desktop.
 # Must be an existing local user account on the host.
 desktop_user: eric

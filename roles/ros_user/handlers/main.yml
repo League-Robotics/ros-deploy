@@ -1,7 +1,21 @@
 ---
 # roles/ros_user/handlers/main.yml
 
+# The SSH server unit is named `ssh` on Debian/Ubuntu (`sshd` is the RHEL name),
+# so `name: sshd` fails outright with "Could not find the requested service".
+# Ubuntu 24.04 images may also ship SSH socket-activated: ssh.service sits
+# `disabled`/`inactive` while ssh.socket is what's enabled. There is then no
+# long-running service to reload — and none is needed, because the
+# sshd_config.d drop-in is read afresh on every new connection.
+#
+# So: reload ssh.service only when it is genuinely running, and no-op otherwise.
 - name: Restart sshd
-  ansible.builtin.service:
-    name: sshd
-    state: restarted
+  ansible.builtin.shell:
+    cmd: |
+      if systemctl is-active --quiet ssh.service; then
+        systemctl reload ssh.service && echo reloaded
+      else
+        echo "skipped: ssh.service not running (socket-activated or inactive)"
+      fi
+  register: _ros_user_sshd_reload
+  changed_when: "'reloaded' in _ros_user_sshd_reload.stdout"

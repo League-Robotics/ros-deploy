@@ -15,6 +15,58 @@
       (exports WIFI_MESH_PSK), then re-run.
     quiet: true
 
+# Most fleet Pis ship with NetworkManager already active, but an Ubuntu Server
+# image (e.g. skadi) can be netplan/systemd-networkd only, where `nmcli` does
+# not exist and every task below would fail. Install it and hand wlan0 over to
+# NetworkManager by setting the netplan renderer, so this role is self-contained
+# on any Ubuntu host.
+- name: Ensure NetworkManager is installed
+  ansible.builtin.apt:
+    name: network-manager
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: _wifi_nm_install
+
+- name: Point netplan at NetworkManager as the renderer
+  ansible.builtin.copy:
+    dest: /etc/netplan/99-fleet-nm-renderer.yaml
+    content: |
+      # Managed by ros-deploy (roles/wifi). Hands wlan0 to NetworkManager so the
+      # fleet WiFi profile below is the thing that governs this interface.
+      network:
+        version: 2
+        renderer: NetworkManager
+    owner: root
+    group: root
+    mode: "0600"
+  register: _wifi_renderer
+
+# netplan generate (not apply) writes the NM config without tearing the live
+# link down mid-play; NM takes over on the next boot or when the profile is
+# activated below. `apply` on a WiFi-only host can drop the connection and
+# strand it, so it is deliberately avoided here.
+- name: Regenerate backend config for the renderer change
+  ansible.builtin.command:
+    cmd: netplan generate
+  when: _wifi_renderer.changed
+  changed_when: true
+
+- name: Ensure NetworkManager is enabled and running
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: started
+    enabled: true
+
+- name: Wait for NetworkManager to be ready before using nmcli
+  ansible.builtin.command:
+    cmd: nmcli -t -f RUNNING general
+  register: _wifi_nm_ready
+  until: _wifi_nm_ready.stdout is search('running')
+  retries: 12
+  delay: 5
+  changed_when: false
+
 - name: Ensure the Busboom Mesh connection exists (per-host static IP)
   community.general.nmcli:
     type: wifi

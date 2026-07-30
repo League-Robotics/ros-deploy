@@ -90,11 +90,27 @@
   register: _turbovnc_release
   when: ansible_architecture == "x86_64"
 
+# Check the installed version BEFORE downloading. `apt: deb:` fetches the whole
+# .deb (~42 MB) and only then decides it is already installed, so on a slow link
+# every run burns the full download and can time out (torture measured ~74 kB/s
+# => ~10 min). dpkg-query's version is "3.3-20260206" for upstream tag "3.3", so
+# match on the leading version component rather than comparing the whole string.
+- name: Check the installed TurboVNC version (amd64)
+  ansible.builtin.command:
+    cmd: dpkg-query -W -f='${Version}' turbovnc
+  register: _turbovnc_installed
+  changed_when: false
+  failed_when: false
+  when: ansible_architecture == "x86_64"
+
 - name: Download and install TurboVNC (amd64)
   ansible.builtin.apt:
     deb: "https://github.com/TurboVNC/turbovnc/releases/download/{{ _turbovnc_release.json.tag_name }}/turbovnc_{{ _turbovnc_release.json.tag_name }}_amd64.deb"
     state: present
-  when: ansible_architecture == "x86_64"
+  when:
+    - ansible_architecture == "x86_64"
+    - (_turbovnc_installed.rc | default(1)) != 0
+      or not (_turbovnc_installed.stdout | default('')).startswith(_turbovnc_release.json.tag_name)
 
 # ── TigerVNC (aarch64) ────────────────────────────────────────────────────────
 
@@ -167,6 +183,10 @@
     group: "{{ desktop_user }}"
     mode: "0755"
 
+# NOTE: TurboVNC takes -SecurityTypes None on its own. The
+# --I-KNOW-THIS-IS-INSECURE confirmation flag is TigerVNC-only; TurboVNC's Xvnc
+# rejects it with "Unrecognized option" and the server dies (status=255). Keep
+# that flag in the TigerVNC (aarch64) unit below, but NOT here.
 - name: Deploy VNC systemd user service (TurboVNC, amd64)
   ansible.builtin.copy:
     dest: "/home/{{ desktop_user }}/.config/systemd/user/vncserver.service"
@@ -183,7 +203,7 @@
       ExecStart=/opt/TurboVNC/bin/vncserver :{{ desktop_vnc_display }} \
         -geometry {{ desktop_vnc_geometry }} \
         -depth {{ desktop_vnc_depth }} \
-        {% if desktop_vnc_no_password %}-SecurityTypes None --I-KNOW-THIS-IS-INSECURE {% endif %}\
+        {% if desktop_vnc_no_password %}-SecurityTypes None {% endif %}\
         -wm xfce
       ExecStop=/opt/TurboVNC/bin/vncserver -kill :{{ desktop_vnc_display }}
       Restart=on-failure

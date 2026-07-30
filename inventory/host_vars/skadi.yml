@@ -1,0 +1,61 @@
+# inventory/host_vars/skadi.yml
+# Per-host overrides for `skadi` (Raspberry Pi 4 Model B Rev 1.1, Ubuntu 24.04.4).
+# Ubuntu 24.04 → ROS 2 Kilted Kaiju. Dedicated camera server: no drivetrain,
+# no REV Hub — it just captures and serves images to the fleet.
+
+ros_version: kilted
+ros_package_variant: ros-base
+
+# ── Cameras ───────────────────────────────────────────────
+# skadi is a camera server: one Global Shutter Camera (IMX296) on the CSI port.
+# Install camera_ros and run one camera_node, publishing under /camera0/* on
+# ROS_DOMAIN_ID 42 for fleet-wide viewing.
+install_cameras: true
+# Pi 4 uses the VC4/Unicam libcamera pipeline (bcm2835-unicam), NOT the Pi 5
+# CFE/PiSP. The upstream libcamera shipped with camera_ros drives that path, so
+# the rpi-libcamera fork build (needed on Pi 5, e.g. vidar) is NOT required here.
+# Same reasoning as baldur, the fleet's other Pi 4 camera host.
+cameras_build_rpi_libcamera: false
+# Serve the camera as MJPEG over HTTP (view in a browser, e.g. from the Mac):
+#   http://skadi:8080/stream_viewer?topic=/camera0/camera/image_raw
+cameras_web_video_server: true
+# NO colour relay on skadi. The relay exists to undo a camera_ros R/B swap seen
+# with vidar's rpi-libcamera FORK (Pi 5). skadi runs STOCK Ubuntu libcamera
+# (Pi 4 / vc4 pipeline). Doubly moot here: the sensor is MONOCHROME, so there
+# are no R/B channels to swap. View /camera0/camera/image_raw directly.
+cameras_color_relay: false
+# Auto-restart the camera if libcamera stalls (publishes nothing without crashing).
+cameras_watchdog: true
+# ── Sensor: Raspberry Pi Global Shutter Camera (Sony IMX296) ──────────
+# Confirmed on the hardware (2026-07-29): `imx296 10-001a: found IMX296LQ`,
+# device-tree node imx296@1a, /dev/video0 = unicam-image. Auto-detected by
+# camera_auto_detect=1 — no dtoverlay line needed in /boot/firmware/config.txt.
+#
+# This is NOT the IMX219 that baldur/vidar use, so the geometry differs:
+#   • Native resolution 1456x1088 (1.58 MP, 1/2.9"), global shutter.
+#   • The "LQ" part number is the MONO variant, but do NOT ask for a mono
+#     format: camera_ros dies with `unsupported pixel format "R8"`. At
+#     1456x1088 this camera_ros/libcamera build offers only packed formats —
+#     NV21, XBGR8888, BGR888, RGB888, XRGB8888, YUYV, UYVY — so RGB888 it is.
+#     The greyscale image simply arrives with R=G=B.
+# RESOLUTION, measured (2026-07-30): full-sensor 1456x1088 does NOT work in
+# practice on this Pi 4. camera_ros publishes happily at ~11 Hz, but
+# web_video_server cannot JPEG-encode 1456x1088 RGB888 fast enough to answer HTTP
+# requests — /snapshot and /stream both hang and time out, even from localhost, so
+# the camera looks dead to every viewer while ROS subscribers see a healthy topic.
+# (The camera-watchdog correctly reports it healthy for exactly this reason: the
+# ROS publish rate is fine, only the HTTP encode path is starved.)
+# 2x2 binned keeps the global shutter's full field of view at a quarter of the
+# pixels, which the Pi 4 can encode in real time.
+cameras_list:
+  - namespace: camera0
+    camera: 0
+    width: 728
+    height: 544
+    format: RGB888
+    # Cap the publish rate. Uncapped, this sensor free-runs at ~30 Hz, which is
+    # more than the Pi 4 needs to serve and enough to make RELIABLE/KEEP_LAST(1)
+    # subscribers report dropped messages. 10 Hz is plenty for viewing and leaves
+    # headroom for web_video_server's per-request JPEG encoding.
+    fps: 10
+    frame_id: camera0_optical_frame
