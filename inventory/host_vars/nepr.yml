@@ -7,6 +7,11 @@
 ros_version: kilted
 ros_package_variant: ros-base
 
+# Hardware model, consumed by scripts/reimage-pi.sh to fill in the flash
+# script's --model flag. Documentation only — no Ansible role reads this.
+# Vocabulary matches flash-pi-card.sh: "3" | "4" | "5" | "zero2w".
+pi_model: "4"
+
 # REV Expansion Hub on USB serial (FTDI FT230X → /dev/revhub via roles/revhub).
 install_revhub: true
 

@@ -26,3 +26,20 @@ install_joy: true
 # Keep every Pi on the fleet WiFi (roles/wifi → "Busboom Mesh"). Required for
 # DDS multicast discovery; a Pi on a different SSID is invisible to the fleet.
 configure_wifi: true
+
+# Give every Pi a static Ethernet address as well (roles/wired). The fleet is
+# dual-homed: WiFi carries the default route and DNS, Ethernet adds a second
+# address on the same /21 at 192.168.2.<same last octet>, published in DNS as
+# <host>-en. Wired is the stable path — the WiFi link shows multi-hundred-ms
+# latency spikes under load, which stalls camera streams.
+configure_wired: true
+
+# ── pi_model (per-host, NOT set here on purpose) ──────────
+# Each Pi's host_vars carries `pi_model: "3" | "4" | "5" | "zero2w"`, which
+# scripts/reimage-pi.sh reads to fill in flash-pi-card.sh's --model flag. It is
+# documentation only — no Ansible role consumes it.
+#
+# There is deliberately NO group-level default. A Pi 5 silently inheriting a
+# default of "4" is exactly the mistake the picker exists to prevent, so an
+# unset model must mean "stop and ask the operator", not "assume the common
+# case". When adding a new Pi, set pi_model in its host_vars file.

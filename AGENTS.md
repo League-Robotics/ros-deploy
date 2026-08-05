@@ -55,6 +55,13 @@ scripts/
                              pre-seed (hostname, Busboom Mesh static IP, SSH,
                              ansible user) so a new Pi boots Ansible-ready.
                              macOS only; see the flash-pi-card skill.
+  reimage-pi.sh              Interactive picker over flash-pi-card.sh: lists the
+                             [raspberry_pis] with IP/model/live status, fills in
+                             -n/-i/--model from inventory, preflights the env,
+                             warns before wiping a running node, then offers to
+                             run site.yml. Never selects the target disk itself.
+  camera-portal.py           Discover every fleet camera and view them all in a
+                             browser (probes web_video_server; --list for CLI)
   ros-mac-shell.sh           SSH into the macvm VM with X11 → XQuartz (rviz/rqt)
   collect_fleet_packages.py  Scan the LeagueRobotics org for fleet ROS packages,
                              clone them, write .fleet/packages.lock.yml
@@ -160,6 +167,12 @@ For a **brand-new Pi from a blank SD card**, `./scripts/flash-pi-card.sh`
 does the equivalent of steps 3–4 (static IP + ansible user + SSH) at flash
 time via cloud-init, so you only need steps 1–2 and 5. See the `flash-pi-card`
 skill for the guided flow.
+
+To **reimage a Pi already in the inventory**, use `./scripts/reimage-pi.sh` —
+it picks the host from `[raspberry_pis]`, supplies `-n`/`-i`/`--model` from
+`host_vars` (`pi_model:`), and offers to run step 5 once the card boots. It
+still requires a human to confirm the target disk, and makes you type the
+hostname before wiping a node that is currently up.
 
 ### Running ROS on a Mac
 

@@ -23,6 +23,19 @@ straight to `site.yml`.
 
 ## Procedure
 
+0. **Existing fleet host? Start with the picker.** For a Pi already in the
+   inventory, `./scripts/reimage-pi.sh` lists the Pis with their IP, model and
+   live status, and fills in `-n`, `-i` and `--model` from `host_vars` so none
+   of it is hand-typed. It also preflights the environment (PSK, keys, image
+   cache) and, after flashing, offers to wait for boot and run `site.yml`.
+   Use `flash-pi-card.sh` directly for a host that is NOT yet in the inventory.
+
+   **The picker does not replace steps 1-2.** Run it without `-d` and it prints
+   the detect table and stops — it never selects `/dev/diskN` for you. You still
+   show the candidate to the user and get explicit confirmation, then re-run
+   with `-d` and `--confirm`. The picker is additive to the confirmations below,
+   never a substitute for them.
+
 1. **Detect the card.** Ask the user to insert it, then:
    `./scripts/flash-pi-card.sh --detect`
    The row marked `PICK=YES` is the likely card (external, ≤ `--max-gb` 34, so a
@@ -49,8 +62,11 @@ straight to `site.yml`.
    `-m <file>` for a local image or `--no-download` to forbid fetching.
 
 4. **Ensure the WiFi PSK is loaded.** The script needs `$WIFI_MESH_PSK` (the
-   Busboom Mesh key) in the environment — it is never stored in the repo. If
-   unset, have the user run:
+   Busboom Mesh key) — it is never stored in the repo. Note it falls back to
+   reading `.env` from the repo root, so an unset environment variable is NOT
+   automatically fatal; `reimage-pi.sh`'s preflight reports which source it
+   found (`ok WIFI_MESH_PSK (from .env)`). If genuinely unavailable, have the
+   user run:
    `dotconfig load <deploy>; set -a; source .env; set +a`
    (Optional sanity check before flashing — render without touching the card:
    `./scripts/flash-pi-card.sh -n <name> -i <ip> --render-only /tmp/<name>-boot`
@@ -75,6 +91,14 @@ straight to `site.yml`.
    ansible <name> -m ansible.builtin.ping          # reachable as the ansible user
    ansible-playbook playbooks/site.yml --limit <name>
    ```
+   `reimage-pi.sh` offers to do this waiting-and-deploying for you.
+
+   **ROS is intentionally NOT on the card.** `roles/ros/tasks/install_kilted.yml`
+   is a procedure, not a package list — it queries the GitHub API for the current
+   `ros-apt-source` release at run time, then pulls ~193 MB / 225 packages. Baking
+   that into cloud-init would create a second source of truth that cannot be
+   re-run and whose failures are invisible on a Pi nobody can SSH into yet. Do not
+   propose adding it; run `site.yml` instead.
 
 ## Safety notes
 
@@ -82,5 +106,9 @@ straight to `site.yml`.
   (default 34) — but YOU still confirm the exact `/dev/diskN` with the user.
 - `--confirm` must equal `-d` exactly; mismatches abort.
 - Everything on the target device is erased. Say so before flashing.
+- **Reimaging a host that is currently `UP` destroys a running fleet node.**
+  `reimage-pi.sh` shows live status in the menu and makes you type the hostname
+  to confirm (not `y`) — but you must still raise it with the user explicitly.
+  Check that `host_vars/<name>.yml` captures the node's config before wiping it.
 - The PSK and (if used) the recovery password are written in cleartext onto the
   card's FAT boot partition — expected, but don't echo them into chat/logs.

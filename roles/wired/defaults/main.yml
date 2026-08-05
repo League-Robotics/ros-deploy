@@ -1,0 +1,39 @@
+---
+# roles/wired/defaults/main.yml
+# Static Ethernet addressing for the fleet Pis. Every wired node gets the SAME
+# shape of config — only the address differs, and that is derived, not typed.
+#
+# Enable per host/group with `configure_wired: true` (set for raspberry_pis).
+
+wired_ifname: eth0
+
+# NetworkManager profile name. One name across the fleet so `nmcli con show`
+# reads the same on every node.
+wired_conn_name: fleet-wired
+
+# ── The address ───────────────────────────────────────────────────────────────
+# Derived from the host's WiFi address (its inventory `ansible_host`) by
+# swapping the third octet 1 -> 2:  192.168.1.142  ->  192.168.2.142
+# This is deliberate: the DNS server (lorne) publishes exactly that pairing as
+# <host> and <host>-en, so a hand-maintained second list here would be a second
+# source of truth that silently drifts from DNS. Derive it once, here.
+wired_ip4: >-
+  {{ ansible_host | regex_replace('^(\d+)\.(\d+)\.1\.(\d+)$', '\1.\2.2.\3') }}
+
+# Same /21 as the WiFi side — 192.168.0.0-192.168.7.255 is ONE subnet, so the
+# .1 and .2 addresses are two interfaces on the same network, not two networks.
+wired_prefix: 21
+
+# ── Routing: deliberately NO gateway and NO DNS on this profile ───────────────
+# Both interfaces sit on the same /21, so if eth0 also installed a default route
+# the host would have two, and which one wins would depend on metric races at
+# boot. WiFi (roles/wifi) owns the default route and the DNS servers; the wired
+# profile is purely an additional address on the same subnet.
+#
+# never-default hard-guarantees that even if a gateway is somehow offered, this
+# connection will not become the default route.
+wired_never_default: true
+
+# Lower autoconnect priority than the WiFi profile (roles/wifi uses 100), so if
+# both are available NetworkManager still treats WiFi as the primary.
+wired_autoconnect_priority: 50

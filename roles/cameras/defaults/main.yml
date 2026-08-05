@@ -84,9 +84,28 @@ cameras_color_relay_service_name: camera-color-relay
 # topic and restarts the camera service (web_video_server follows via PartOf)
 # if no frames are flowing.
 cameras_watchdog: false
-cameras_watchdog_interval: 90      # seconds between checks
+cameras_watchdog_interval: 120     # seconds between checks. Kept well under the
+                                   # ~20-30 s that a web_video_server stall takes
+                                   # to clear on its own, so a viewer sees at
+                                   # most one probe interval of downtime.
 cameras_watchdog_probe_secs: 8     # how long to sample the topic before deciding
 cameras_watchdog_min_rate: 3       # restart if publish rate drops below this (Hz)
+
+# Second probe: web_video_server 3.1.0 wedges its HTTP listener under /snapshot
+# request pressure while ROS keeps publishing normally, and never self-heals.
+# The rate check above cannot see that (the ROS side really is healthy), so the
+# watchdog also reads a few bytes off /stream and restarts ONLY the HTTP server
+# if nothing comes back. Applies when cameras_web_video_server is enabled.
+# Must exceed the SLOWEST host's frame time or the watchdog restarts a host
+# that is merely slow: measured 2026-07-31, one 640x480 frame takes 0.5 s on
+# baldur but 3.4 s on skadi, 9.8 s on vidar and up to 12.8 s on ali. A 6 s
+# budget was killing the
+# slow hosts every cycle, so they never stayed up long enough to serve the
+# viewer page (uptimes under 35 s across the board).
+cameras_watchdog_http_secs: 40         # seconds to read from /stream
+cameras_watchdog_http_min_bytes: 2000  # less than this = wedged (a partial JPEG
+                                       # frame already exceeds it; 0 is the
+                                       # signature of a wedged listener)
 
 # OS user the camera service runs as. Must be able to access camera devices;
 # the role adds it to `cameras_device_groups`.

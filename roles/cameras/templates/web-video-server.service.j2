@@ -1,9 +1,11 @@
 [Unit]
 # Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
 Description=ROS {{ ros_version }} web_video_server (camera streams as MJPEG over HTTP)
-After=network-online.target {{ cameras_service_name }}.service{% if cameras_color_relay | default(false) %} {{ cameras_color_relay_service_name }}.service{% endif %}
+# See ros-cameras.service.j2: Want/Require network-online.target would make
+# an Ethernet unplug stop this service on a dual-homed host even though WiFi
+# is still carrying traffic. Order only.
+After=network.target {{ cameras_service_name }}.service{% if cameras_color_relay | default(false) %} {{ cameras_color_relay_service_name }}.service{% endif %}
 
-Wants=network-online.target
 # Restart together with the cameras so we never hold stale subscriptions to
 # publishers that went away when ros-cameras restarted.
 PartOf={{ cameras_service_name }}.service
@@ -16,8 +18,20 @@ User={{ cameras_user }}
 Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
 Environment=ROS_LOCALHOST_ONLY=0
 ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec ros2 run web_video_server web_video_server --ros-args -p port:={{ cameras_web_video_port }} -p address:=0.0.0.0'
-Restart=on-failure
+# # web_video_server does not always exit on SIGTERM -- it can sit in
+# 'deactivating' until systemd's default 90s stop timeout expires, and a
+# restart during that window silently does nothing. Kill it quickly and
+# escalate to SIGKILL so a restart is always fast and always effective.
+TimeoutStopSec=8
+KillMode=mixed
+SendSIGKILL=yes
+# Restart=always, NOT on-failure: web_video_server exits cleanly (status 0)
+# when the network changes under it, and on-failure would leave port 8080
+# dead until a human intervened. Observed after unplugging Ethernet: four of
+# five hosts stopped serving while still reachable over WiFi.
+Restart=always
 RestartSec=5
+StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target

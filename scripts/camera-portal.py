@@ -86,8 +86,61 @@ def parse_inventory(path: Path) -> list[dict]:
         )
         if addr and name not in seen:
             seen.add(name)
-            hosts.append({"name": name, "address": addr})
+            hosts.append({
+                "name": name,
+                "address": addr,
+                "namespaces": host_namespaces(name),
+                "swapped": host_swapped_namespaces(name),
+            })
     return hosts
+
+
+def host_namespaces(name: str) -> set[str]:
+    """Camera namespaces this host physically has, from its host_vars file.
+
+    web_video_server advertises every image topic it can see on the ROS DOMAIN,
+    not the cameras attached to the machine it runs on — so a single-camera host
+    happily lists a peer's /camera1/... as if it were its own (measured: skadi,
+    ali, vali and baldur each have one camera but advertise two, because vidar
+    really does have two). Those phantom entries can never render, so the page
+    fills with permanently-black tiles.
+
+    The inventory is the source of truth for what hardware exists, so read the
+    `namespace:` keys out of host_vars and use them to filter. An empty set means
+    "unknown" — no host_vars file, or none parsed — and the caller then falls
+    back to trusting the server rather than hiding everything.
+    """
+    hv = REPO_ROOT / "inventory" / "host_vars" / f"{name}.yml"
+    if not hv.exists():
+        return set()
+    return set(re.findall(r"^\s*-?\s*namespace:\s*(\S+)", hv.read_text(), re.M))
+
+
+def host_swapped_namespaces(name: str) -> set[str]:
+    """Namespaces whose camera needs the R/B relay (`swap_rb: true`).
+
+    This is PER CAMERA, not per host. Verified on vidar: two IMX296 modules on
+    one Pi, same config, same negotiated 1456x1088-BGR888/sRGB stream — camera0
+    renders skin and wood correctly while camera1 renders them blue. The boards
+    themselves differ, so no single format setting fixes both.
+
+    For a camera listed here the corrected pixels arrive on
+    <ns>/camera/image_color and that is what the page must show; every other
+    camera shows image_raw. Getting this per-camera is what stops the endless
+    "fixed one, broke the other" loop.
+    """
+    hv = REPO_ROOT / "inventory" / "host_vars" / f"{name}.yml"
+    if not hv.exists():
+        return set()
+    text = hv.read_text()
+    swapped, current = set(), None
+    for line in text.splitlines():
+        m = re.match(r"\s*-?\s*namespace:\s*(\S+)", line)
+        if m:
+            current = m.group(1)
+        elif current and re.match(r"\s*swap_rb:\s*(true|yes)\s*$", line, re.I):
+            swapped.add(current)
+    return swapped
 
 
 def port_open(address: str, port: int, timeout: float = CONNECT_TIMEOUT) -> bool:
@@ -99,7 +152,7 @@ def port_open(address: str, port: int, timeout: float = CONNECT_TIMEOUT) -> bool
         return False
 
 
-def list_topics(address: str) -> list[str]:
+def list_topics(address: str, swapped: set[str] | None = None) -> list[str]:
     """Ask web_video_server which image topics it knows about.
 
     Its index page lists them as links. We only keep image-ish topics and drop
@@ -112,35 +165,57 @@ def list_topics(address: str) -> list[str]:
     except (urllib.error.URLError, OSError, socket.timeout):
         return []
 
+    # The index lists each topic as `<li>/camera0/camera/image_raw<ul>...` and
+    # again inside `?topic=` query strings. Match the query-string form: it is
+    # unambiguous, whereas a bare `/...image...` pattern also matches fragments
+    # of the surrounding markup.
     topics: set[str] = set()
-    for match in re.findall(r"/[A-Za-z0-9_/]*image[A-Za-z0-9_/]*", body):
-        topic = re.sub(r"/(compressed|theora)$", "", match)
-        topics.add(topic)
-    return sorted(topics)
+    for match in re.findall(r"[?&]topic=(/[A-Za-z0-9_/]*image[A-Za-z0-9_]*)", body):
+        topics.add(re.sub(r"/(compressed|theora)$", "", match))
+
+    # Pick ONE topic per camera, per camera — not per host.
+    #
+    # camera_ros hands through libcamera's buffer and labels it correctly, but
+    # some sensor boards deliver the channels reversed. Verified on vidar: two
+    # IMX296 modules, identical config, and camera0 is correct while camera1 is
+    # swapped. So the choice is made per namespace from `swap_rb:` in host_vars:
+    # a swapped camera shows the relay's corrected image_color, everything else
+    # shows image_raw.
+    #
+    # image_color can also linger after a relay is switched off, so it is only
+    # ever chosen for a camera explicitly marked swapped.
+    swapped = swapped or set()
+    out = []
+    for t in topics:
+        # Topics are /<host>/<ns>/camera/image_*, so the namespace is the
+        # SECOND path element (the first is the hostname prefix added to
+        # stop the fleet-wide /camera0 collision).
+        parts = t.lstrip("/").split("/")
+        ns = parts[1] if len(parts) > 1 else parts[0]
+        want_color = ns in swapped
+        if t.endswith("/image_color") and want_color:
+            out.append(t)
+        elif t.endswith("/image_raw") and not want_color:
+            out.append(t)
+    return sorted(out)
 
 
 def snapshot_ok(address: str, topic: str) -> tuple[bool, int]:
-    """Read the first frame off the MJPEG stream — the real liveness test.
+    """Deliberately does NOT probe. Kept so the call site stays readable.
 
-    Deliberately uses /stream rather than /snapshot. web_video_server leaks a
-    jpeg_snapshot_streamer per /snapshot request and stops answering them after
-    a handful (observed on skadi: two fast replies, then every request hangs
-    until the service is restarted), while /stream keeps working the whole time.
-    Probing with /snapshot would therefore report healthy cameras as dead AND
-    make the leak worse on every rescan.
+    Earlier versions opened /stream (and before that /snapshot) for every topic
+    on every scan to prove it delivered frames. That was actively harmful:
+    web_video_server 3.1.0 stalls its whole HTTP listener under request pressure,
+    so a scan of N cameras opened N streams, abandoned them, and wedged the very
+    server it was testing — the page then reported "no topics advertised" for
+    hosts whose cameras were fine, and each Rescan made it worse.
 
-    We read a bounded prefix and close, rather than draining an endless stream.
+    The <img> tags on the page are the real test: the browser opens exactly one
+    long-lived stream per camera, which is the access pattern web_video_server
+    handles well. If a camera is dark you see it immediately. So discovery just
+    lists what the server advertises and lets the browser do the rest.
     """
-    url = f"http://{address}:{VIDEO_PORT}/stream?topic={topic}"
-    try:
-        with urllib.request.urlopen(url, timeout=SNAPSHOT_TIMEOUT) as resp:
-            # Enough to cover the multipart header plus a chunk of real JPEG.
-            data = resp.read(65536)
-        # A topic with no publisher still opens fine but yields nothing, so
-        # require actual payload rather than just a good status code.
-        return (len(data) > 1024, len(data))
-    except (urllib.error.URLError, OSError, socket.timeout):
-        return (False, 0)
+    return (True, 0)
 
 
 def probe_host(host: dict) -> dict:
@@ -155,7 +230,18 @@ def probe_host(host: dict) -> dict:
         result["status"] = "no web_video_server" if reachable else "offline"
         return result
 
-    topics = list_topics(address)
+    topics = list_topics(address, host.get("swapped") or set())
+
+    # Drop topics whose namespace this host does not physically have (see
+    # host_namespaces). Only filter when the inventory actually told us
+    # something; otherwise trust the server rather than blanking the host.
+    wanted = host.get("namespaces") or set()
+    if wanted:
+        topics = [t for t in topics
+                  if len(t.lstrip("/").split("/")) > 1
+                  and t.lstrip("/").split("/")[1] in wanted
+                  and t.lstrip("/").split("/")[0] == host["name"]]
+
     if not topics:
         result["status"] = "server up, no topics advertised"
         return result
@@ -248,6 +334,66 @@ PAGE = """<!doctype html>
 <div class="grid" id="grid"></div>
 <div id="status"></div>
 <script>
+// Refresh each tile with periodic SNAPSHOTS instead of holding a live MJPEG
+// stream open.
+//
+// Measured on this fleet: web_video_server 3.1.0 serves ONE long-lived /stream
+// well, but a second concurrent stream to the same host stalls the listener --
+// and a browser page holding N streams open permanently is exactly that load.
+// It is also more than the WiFi link carries for the bigger sensors (vidar
+// served 2 MB locally but 22 bytes over the air in the same second).
+//
+// A snapshot is a short request that finishes and frees the connection, so the
+// server is idle between frames and the link only carries one frame at a time.
+// The result is a slower frame rate but tiles that actually stay up.
+// 4s, not 1s. Measured: a host serves a snapshot fine, but a second request
+// arriving while it is still encoding stalls its listener for ~20-30s. With
+// six tiles refreshing, a short interval means they constantly knock each
+// other out and the page shows a rotating subset. 4s is slower than video but
+// it is the difference between all six tiles staying up and half of them
+// going black.
+// Each tile refreshes on its OWN cadence: fetch a snapshot, and only when that
+// frame has landed (or failed) schedule the next one. A fixed interval does not
+// work here -- measured 2026-07-31, one 640x480 frame takes 0.5 s on baldur but
+// 3.4 s on skadi and 9.8 s on vidar, so any shared interval is either too fast
+// for the slow hosts (requests pile up and web_video_server stalls its listener
+// for ~20-30 s) or needlessly slow for the quick ones.
+//
+// Snapshots rather than a live MJPEG stream: web_video_server 3.1.0 serves one
+// long-lived stream well but stalls when a second overlaps it, and a page
+// holding N streams open permanently is exactly that load.
+// Measured 2026-07-31: every camera serves reliably on its own, but six
+// tiles requesting close together still knock two of them out. A longer gap
+// plus a wider stagger trades frame rate for all six tiles staying live.
+const GAP_MS = 3000;          // breathing room between a host's requests
+const MAX_WAIT_MS = 25000;    // give even the slowest host time to encode
+const timers = [];
+
+function startStreams(imgs) {
+  while (timers.length) clearTimeout(timers.pop());
+  imgs.forEach((img, idx) => {
+    const base = img.dataset.src.replace('/stream?', '/snapshot?');
+    const tick = () => {
+      const probe = new Image();
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        if (ok) img.src = probe.src;
+        timers.push(setTimeout(tick, GAP_MS));
+      };
+      probe.onload  = () => finish(true);
+      probe.onerror = () => finish(false);
+      // A stalled host never fires either event; move on rather than freezing
+      // this tile forever.
+      setTimeout(() => finish(false), MAX_WAIT_MS);
+      probe.src = base + '&_=' + Date.now();
+    };
+    // Stagger the first request so six tiles do not hit the fleet at once.
+    timers.push(setTimeout(tick, idx * 2500));
+  });
+}
+
 async function scan() {
   document.getElementById('count').textContent = 'scanning…';
   const r = await fetch('/api/cameras');
@@ -258,21 +404,26 @@ async function scan() {
   document.getElementById('count').textContent =
     d.camera_count + ' camera' + (d.camera_count === 1 ? '' : 's') + ' live';
 
+  // Build every tile first, but WITHOUT a src — see startStreams(). Attaching
+  // all the srcs at once opens N simultaneous MJPEG connections, and
+  // web_video_server stalls its whole HTTP listener under that burst, so the
+  // page would kill the very servers it is displaying (measured: 10 tiles ->
+  // 2 rendered).
+  const pending = [];
   for (const h of d.hosts) {
     for (const c of h.cameras) {
       const el = document.createElement('div');
       el.className = 'cam';
-      // Cache-bust so a rescan restarts the MJPEG stream instead of reusing a
-      // connection whose publisher may have gone away.
-      const src = c.stream + '&_=' + Date.now();
       el.innerHTML =
         '<h2>' + h.name + '<span>' + c.topic + '</span></h2>' +
-        '<img src="' + src + '" alt="' + h.name + ' ' + c.topic + '">' +
+        '<img alt="' + h.name + ' ' + c.topic + '" data-src="' + c.stream + '">' +
         '<footer><span>' + h.address + '</span>' +
         '<a href="' + c.direct + '" target="_blank">open direct ↗</a></footer>';
       grid.appendChild(el);
+      pending.push(el.querySelector('img'));
     }
   }
+  startStreams(pending);
   if (!d.camera_count) {
     grid.innerHTML = '<p class="empty">No live cameras found.</p>';
   }

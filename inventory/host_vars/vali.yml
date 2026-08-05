@@ -1,0 +1,70 @@
+# inventory/host_vars/vali.yml
+# Per-host overrides for `vali` (Raspberry Pi 4 Model B Rev 1.1, Ubuntu 24.04.4).
+# Ubuntu 24.04 → ROS 2 Kilted Kaiju.
+
+ros_version: kilted
+ros_package_variant: ros-base
+
+# Hardware model, consumed by scripts/reimage-pi.sh to fill in the flash
+# script's --model flag. Documentation only — no Ansible role reads this.
+# Vocabulary matches flash-pi-card.sh: "3" | "4" | "5" | "zero2w".
+pi_model: "4"
+
+# ── Cameras ───────────────────────────────────────────────
+# vali has a single CSI camera. Install camera_ros and run one node, publishing
+# under /camera0/* on ROS_DOMAIN_ID 42 for fleet-wide viewing.
+install_cameras: true
+# Pi 4 uses the VC4/Unicam libcamera pipeline (bcm2835-unicam), NOT the Pi 5
+# CFE/PiSP. The upstream libcamera shipped with camera_ros drives that path, so
+# the rpi-libcamera fork build (needed on Pi 5, e.g. vidar) is NOT required here.
+cameras_build_rpi_libcamera: false
+# Serve the camera as MJPEG over HTTP (view in a browser, or via
+# ./scripts/camera-portal.py which discovers every fleet camera):
+#   http://vali:8080/stream_viewer?topic=/camera0/camera/image_raw
+cameras_web_video_server: true
+# NO colour relay. MEASURED 2026-07-31 by averaging a frame from each topic:
+# this host's image_raw is R=100 G=82 B=77 (red-dominant, correct), and
+# running the relay turned it into R=78 G=83 B=101 -- i.e. the relay CREATES
+# the blue cast here. Only vidar (Pi 5 / rpi-libcamera fork) actually needs
+# it; the Pi 4 vc4 pipeline already publishes channels matching the label.
+# View /camera0/camera/image_raw on this host.
+cameras_color_relay: false
+# Auto-restart the camera if libcamera stalls (publishes nothing without crashing).
+cameras_watchdog: true
+# ── Sensor: Raspberry Pi Camera Module 3 (Sony IMX708) ────────────────
+# Detected on the hardware (2026-07-30) before provisioning: the device tree has
+# `/soc/i2c0mux/i2c@1/imx708@1a` and dmesg reports `imx708 10-001a`. This is the
+# fleet's ONLY IMX708 — baldur/ali use the IMX219 (Camera Module v2), skadi and
+# vidar use the IMX296 global shutter.
+#
+# Before provisioning, `vcgencmd get_camera` reported `detected=0, libcamera
+# interfaces=0` and the boot logged `camera module ID 0x0000` — that was a stale
+# pre-driver reading, NOT a cable fault. After the first deploy camera_ros
+# configured the sensor at 1536x864 and published normally, so ignore
+# vcgencmd here; it predates the libcamera stack this fleet uses.
+#
+# Geometry: IMX708 is 4608x2592 native (11.9 MP, 1/2.43"), rolling shutter,
+# colour. Full sensor is far too much for a Pi 4 to JPEG-encode — skadi proved
+# that web_video_server stalls well below that (see skadi.yml). 1536x864 is a
+# native 2x2-binned mode with the same 16:9 field of view and a quarter of the
+# pixels; drop to 1280x720 if the Pi 4 still can't keep up over WiFi.
+# Measured after deploy: ~337 KB/frame, snapshot served in 0.5 s, and a
+# sustained MJPEG stream runs at ~3.2 MB/s to the Mac.
+# RESOLUTION: 640x480 fleet-wide. Measured 2026-07-31 under the load the
+# viewer page actually generates (6 tiles refreshing concurrently):
+# baldur/ali at 640x480 (~93 KB/frame) served 3/3 requests, while vali at
+# 1536x864 (~372 KB) and vidar at 1456x1088 (~408 KB) served 0/3 -- the
+# Pi cannot JPEG-encode a big frame before the next request arrives, and
+# web_video_server then stalls its listener for ~20-30 s. Raise this only
+# if you are viewing ONE camera at a time.
+cameras_list:
+  - namespace: camera0
+    camera: 0
+    width: 640
+    height: 480
+    format: BGR888
+    # Cap the publish rate. Uncapped these sensors free-run at ~30 Hz, which is
+    # more than needed for viewing and enough to make RELIABLE/KEEP_LAST(1)
+    # subscribers drop messages, stalling web_video_server's HTTP encoding.
+    fps: 10
+    frame_id: camera0_optical_frame

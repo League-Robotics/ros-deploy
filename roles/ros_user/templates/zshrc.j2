@@ -28,7 +28,15 @@ _ros_source_overlay() {
 # Base ROS 2 underlay.
 _ros_source_overlay "/opt/ros/{{ ros_version }}/setup.zsh" "{{ ros_version }}"
 
-# Workspace overlays (managed list).
+# Shared fleet workspace overlay — heartbeat, xdrive and the distributed fleet
+# packages all build into here. The ros account only ever does ROS, so this is
+# sourced unconditionally rather than being an opt-in entry below. Sourcing it
+# is what makes `ros2 pkg list` show xdrive/heartbeat in an interactive shell.
+{% if ros_user_shared_overlay %}
+_ros_source_overlay "{{ ros_user_shared_overlay }}/install/setup.zsh" "{{ ros_user_shared_overlay | basename }}"
+{% endif %}
+
+# Extra workspace overlays (managed list), sourced after the shared overlay.
 {% for ws in ros_user_workspace_overlays %}
 _ros_source_overlay "{{ ws }}/install/setup.zsh" "{{ ws | basename }}"
 {% endfor %}

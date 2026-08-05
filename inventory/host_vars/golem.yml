@@ -6,13 +6,18 @@
 #   install_joy: true      (plug-and-play Joy publisher -> /golem/joy/joystick0)
 #   configure_wifi: true   (joins Busboom Mesh so it shares baldur's DDS domain)
 #   configure_desktop: true (VNC)
+#
+# Hardware model, consumed by scripts/reimage-pi.sh to fill in the flash
+# script's --model flag. Documentation only — no Ansible role reads this.
+# Vocabulary matches flash-pi-card.sh: "3" | "4" | "5" | "zero2w".
+pi_model: "4"
 # A Logitech Dual Action gamepad is attached (js0).
 
 # ── X-drive teleop ────────────────────────────────────────
-# Map the joystick to /cmd_vel for the fleet; baldur's xdrive_driver consumes it.
-xdrive_run_joy_to_twist: true
+# RETIRED as the operator station 2026-08-02: the joysticks moved to ali (see
+# host_vars/ali.yml), which now runs joy_to_twist. Keep this OFF — if golem
+# rejoins the fleet with the old `true` here, two joy_to_twist nodes would
+# both publish /cmd_vel and fight over the robot.
+xdrive_run_joy_to_twist: false
 xdrive_run_driver: false          # golem has no hub
-# The Logitech Dual Action gamepad is js1 -> /golem/joy/joystick1 (joystick0 is the
-# Sipeed NanoKVM USB device, per /var/lib/ros-joy/index.map). Listen to joystick1.
-xdrive_joy_topic: /golem/joy/joystick1
 # install_revhub stays false (default): golem has no REV Hub.

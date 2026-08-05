@@ -1,10 +1,23 @@
 #!/usr/bin/env bash
 # {{ cameras_config_dir }}/camera-watchdog.sh
 # Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
-# camera_ros/libcamera can stall (the process stays alive but stops publishing
-# frames), which systemd cannot detect. This probes the first camera topic and,
-# if no frames are flowing, restarts the camera service. web_video_server is
-# PartOf that service, so it restarts too and re-discovers the fresh publishers.
+#
+# Two independent failure modes, two independent probes:
+#
+#   1. camera_ros/libcamera stalls — the process stays alive but stops
+#      publishing frames, which systemd cannot detect. Probe the topic rate and
+#      restart the camera service. web_video_server is PartOf it, so it
+#      restarts too and re-discovers the fresh publishers.
+#
+#   2. web_video_server 3.1.0 wedges its HTTP listener while ROS stays healthy.
+#      Each /snapshot spawns a jpeg_snapshot_streamer; under request pressure
+#      they stop completing, sockets pile up in CLOSE-WAIT, and the server stops
+#      answering — permanently. It does NOT self-heal: the CLOSE-WAIT sockets
+#      drain but the listener stays dead until the process is restarted.
+#      Thread count stays pinned (not a thread/fd leak) and the ROS side keeps
+#      publishing at full rate, so probe #1 correctly reports "healthy" while
+#      every viewer sees a dead camera. That is why probe #2 exists.
+#      Triggered by request RATE, not size or count. /stream is unaffected.
 set -uo pipefail
 
 # ROS's setup.bash dereferences unset variables (AMENT_TRACE_SETUP_FILES,
@@ -22,7 +35,10 @@ export HOME=/root ROS_LOG_DIR=/tmp/camera-watchdog
 # The probe must not run before the cameras have had a chance to start
 # publishing, or the very first timer firing after boot restarts a service that
 # was merely still warming up.
-TOPIC="/{{ cameras_list[0].namespace }}/camera/image_raw"
+# Probe the topic the VIEWER actually reads. On a swap_rb camera that is the
+# relay's image_color output, not image_raw -- probing image_raw there would
+# report "healthy" while the relay was dead and every viewer saw black.
+TOPIC="/{{ inventory_hostname }}/{{ cameras_list[0].namespace }}/camera/{% if cameras_list[0].swap_rb | default(false) %}image_color{% else %}image_raw{% endif %}"
 MIN_RATE={{ cameras_watchdog_min_rate }}
 
 # `ros2 topic hz` needs a discovery window before it reports anything. On a
@@ -35,6 +51,37 @@ if [ "${STATE}" != "active" ]; then
   exit 0
 fi
 
+{% if cameras_web_video_server | default(false) %}
+# ── Probe 1: is the HTTP endpoint serving? ────────────────────────────────────
+# Runs FIRST, on purpose. The web_video_server stall is transient — measured on
+# vali it clears itself after roughly 20-30 s. The `ros2 topic hz` probe below
+# takes {{ cameras_watchdog_probe_secs }} s, which is long enough for the stall
+# to expire mid-check, so a rate-probe-first ordering would keep missing it and
+# report everything healthy while viewers saw a dead camera.
+#
+# Deliberately probe /stream, NOT /snapshot: rapid /snapshot requests are what
+# TRIGGER the stall, so a snapshot-based health check would periodically cause
+# the outage it is meant to catch. /stream is unaffected by the bug and reading
+# its first bytes still proves the listener, the ROS subscription and the JPEG
+# encoder all work. A wedged listener returns exactly 0 bytes.
+#
+# --max-time bounds the whole request; curl exits non-zero on timeout, which for
+# a never-ending MJPEG stream is the SUCCESS case as long as bytes arrived — so
+# judge on bytes downloaded, never on the exit status.
+HTTP_URL="http://127.0.0.1:{{ cameras_web_video_port }}/stream?topic=${TOPIC}"
+BYTES="$(curl -s --max-time {{ cameras_watchdog_http_secs }} \
+              -o /dev/null -w '%{size_download}' "${HTTP_URL}" 2>/dev/null || true)"
+
+if [ -z "${BYTES}" ] || [ "${BYTES}" -lt {{ cameras_watchdog_http_min_bytes }} ] 2>/dev/null; then
+  logger -t camera-watchdog "HTTP served ${BYTES:-0} B on ${HTTP_URL}; restarting {{ cameras_web_video_service_name }}"
+  # Restart ONLY the HTTP server. The camera may well be publishing perfectly —
+  # bouncing it would drop every ROS subscriber to fix a problem they never had.
+  systemctl restart --no-block {{ cameras_web_video_service_name }}
+  exit 0
+fi
+{% endif %}
+
+# ── Probe 2: is camera_ros still publishing? ──────────────────────────────────
 # Sample the publish rate. camera_ros can not only stop but also *degrade* to a
 # fraction of a Hz, so require a minimum rate rather than just "any frames".
 RATE="$(timeout {{ cameras_watchdog_probe_secs }} ros2 topic hz "${TOPIC}" 2>/dev/null \

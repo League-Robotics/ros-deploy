@@ -11,9 +11,35 @@ xdrive_user: "{{ ros_user_name | default('ros') }}"   # already in dialout via r
 # Which services THIS host runs (set per host in inventory/host_vars).
 xdrive_run_driver: false
 xdrive_run_joy_to_twist: false
+# Local teleop: joystick plugged into THIS host drives the hub directly —
+# no ROS/WiFi in the control path (ROS publishes encoders only). The robot-side
+# replacement for driver+joy_to_twist when mesh latency makes networked teleop
+# feel laggy.
+xdrive_run_local_teleop: false
+xdrive_local_service_name: xdrive-local-teleop
+xdrive_joy_device: /dev/input/js0     # path or glob; first match wins
+xdrive_local_apply_hz: 50             # motor apply/coalesce rate
+# velocity (default): hub-firmware PID per wheel — synchronized speeds, torque
+# under load. power: open-loop duty (the mode that drove "seriously terribly"
+# on the ground: no load compensation, wheels stall under resistance).
+xdrive_control_mode: velocity
+xdrive_max_velocity: 2500             # full-stick target, encoder counts/s (REV HD Hex free ~2800)
+# slew/quantum are in the COMMAND unit: counts/s in velocity mode, duty in power mode.
+xdrive_local_slew: 150                # velocity mode: 0 -> full in ~0.33 s
+xdrive_local_quantum: 25              # ~1% of full scale; stick noise dedupes away
+# Motor identification: HOLD a pad button to run one hub port forward (raw,
+# sign config deliberately bypassed) so port->wheel->direction can be mapped
+# by eye. 8BitDo/XInput button indices: A=0 B=1 X=2 Y=3.
+xdrive_cal_buttons: "3:0,2:1,1:2,0:3"   # Y->port0, X->port1, B->port2, A->port3
+xdrive_cal_velocity: 800
 
 xdrive_driver_service_name: xdrive-driver
 xdrive_joy_service_name: joy-to-twist
+
+# Seconds after boot to restart the driver once (xdrive-driver-kick.timer).
+# Works around the dead-first-hub-session cold-boot bug — see the kick service
+# template. 60s comfortably clears hub power-up on every observed boot.
+xdrive_kick_after_boot_sec: 60
 
 # ── xdrive_driver params (robot side) ───────────────────────
 xdrive_serial_port: "auto"                 # "auto"/"" => rhsp enumerates the hub

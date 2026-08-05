@@ -1,0 +1,192 @@
+---
+# roles/wired/tasks/main.yml
+# Give every fleet Pi an identical static Ethernet configuration.
+#
+# The fleet is dual-homed: WiFi (roles/wifi) carries the default route and DNS,
+# Ethernet adds a second static address on the same /21. Wired is the stable,
+# low-latency path — the WiFi link has shown multi-hundred-ms latency spikes
+# under load — so ROS traffic and SSH prefer it once it is up.
+#
+# Idempotent. Nothing here touches the WiFi profile or the default route, and the
+# wired connection is only ever activated when the interface actually has carrier
+# — activating it without a cable routes the whole /21 out a dead interface and
+# strands a WiFi-managed host. See the carrier check below for the full reasoning.
+
+- name: Assert the derived wired address looks sane
+  # wired_ip4 is derived from ansible_host by rewriting the third octet. If a
+  # host's ansible_host is not a 192.168.1.x address the regex passes the value
+  # through unchanged, which would silently configure the WIFI address onto
+  # eth0 — two interfaces claiming one IP. Fail loudly instead.
+  ansible.builtin.assert:
+    that:
+      - wired_ip4 is match('^\d+\.\d+\.\d+\.\d+$')
+      - wired_ip4 != ansible_host
+    fail_msg: >-
+      Could not derive a wired address for {{ inventory_hostname }}:
+      ansible_host={{ ansible_host }} produced wired_ip4={{ wired_ip4 }}.
+      Expected a 192.168.1.x host address. Set wired_ip4 explicitly in
+      host_vars/{{ inventory_hostname }}.yml if this host is addressed
+      differently.
+    quiet: true
+
+- name: Check the Ethernet interface exists
+  ansible.builtin.stat:
+    path: "/sys/class/net/{{ wired_ifname }}"
+  register: _wired_iface
+
+- name: Skip the rest if this host has no Ethernet interface
+  ansible.builtin.meta: end_host
+  when: not _wired_iface.stat.exists
+
+- name: Check whether the wired interface has carrier (is a cable plugged in?)
+  # This gates ACTIVATION below, and it is a safety interlock, not an optimisation.
+  #
+  # `nmcli connection up` FORCES activation even with no carrier. NetworkManager
+  # would never autoconnect a cable-less Ethernet by itself; the explicit `up`
+  # overrides precisely that protection. Activating a dead link is NOT harmless:
+  # the static address installs an on-link route for the whole /21 on eth0, and
+  # NM gives Ethernet a better route metric than WiFi — so the entire subnet,
+  # gateway included, is routed out an interface with no cable, and a host being
+  # managed over WiFi is stranded instantly. (Observed on baldur, 2026-08-02.)
+  #
+  # never_default4 does NOT protect against this: it suppresses a DEFAULT route,
+  # not the on-link subnet route that any configured address creates.
+  #
+  # The profile itself is still written and left autoconnect=true, so plugging a
+  # cable in later brings it up on its own. Only the forced `up` is withheld.
+  ansible.builtin.command:
+    cmd: cat /sys/class/net/{{ wired_ifname }}/carrier
+  register: _wired_carrier
+  changed_when: false
+  failed_when: false
+
+- name: Report that the wired profile is configured but left inactive (no cable)
+  ansible.builtin.debug:
+    msg: >-
+      {{ wired_ifname }} on {{ inventory_hostname }} has no carrier, so the
+      {{ wired_conn_name }} profile ({{ wired_ip4 }}/{{ wired_prefix }}) is
+      configured but NOT activated. Plug a cable in and NetworkManager will
+      bring it up automatically.
+  when: (_wired_carrier.stdout | default('0') | trim) != '1'
+
+# NetworkManager is installed by roles/wifi, but this role must stand alone
+# (playbooks/wired.yml can be run on its own), so make sure it is present and
+# ready rather than assuming the WiFi role ran first.
+- name: Ensure NetworkManager is installed
+  ansible.builtin.apt:
+    name: network-manager
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure NetworkManager is enabled and running
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: started
+    enabled: true
+
+- name: Wait for NetworkManager to be ready before using nmcli
+  ansible.builtin.command:
+    cmd: nmcli -t -f RUNNING general
+  register: _wired_nm_ready
+  until: _wired_nm_ready.stdout is search('running')
+  retries: 12
+  delay: 5
+  changed_when: false
+
+# Ubuntu's default netplan drops a DHCP profile on eth0 (netplan-eth0). Left in
+# place it races our static profile on every boot: NM activates whichever it
+# likes, and on a segment with no DHCP server it sits in
+# "connecting (getting IP configuration)" forever — observed on every Pi in this
+# fleet. Remove it so there is exactly one profile governing eth0.
+- name: Find stray netplan/DHCP profiles bound to the wired interface
+  ansible.builtin.command:
+    cmd: nmcli -t -f NAME,DEVICE,TYPE connection show
+  register: _wired_existing
+  changed_when: false
+
+- name: Remove stray wired profiles that would race the fleet profile
+  ansible.builtin.command:
+    cmd: nmcli connection delete "{{ item }}"
+  loop: >-
+    {{ _wired_existing.stdout_lines
+       | select('search', ':' ~ wired_ifname ~ ':|^netplan-' ~ wired_ifname ~ ':')
+       | map('regex_replace', '^([^:]*):.*$', '\1')
+       | reject('equalto', wired_conn_name)
+       | unique | list }}
+  changed_when: true
+
+- name: Ensure the fleet wired connection exists (static, per-host address)
+  # No gw4/dns4 on purpose — see roles/wired/defaults/main.yml. The WiFi profile
+  # owns the default route; this is a second address on the same subnet.
+  community.general.nmcli:
+    type: ethernet
+    conn_name: "{{ wired_conn_name }}"
+    ifname: "{{ wired_ifname }}"
+    method4: manual
+    ip4:
+      - "{{ wired_ip4 }}/{{ wired_prefix }}"
+    never_default4: "{{ wired_never_default }}"
+    method6: ignore
+    autoconnect: true
+    state: present
+  register: _wired_profile
+
+- name: Read current autoconnect priority
+  ansible.builtin.command:
+    cmd: nmcli -t -f connection.autoconnect-priority connection show "{{ wired_conn_name }}"
+  register: _wired_prio
+  changed_when: false
+
+- name: Keep WiFi ahead of wired on autoconnect
+  ansible.builtin.command:
+    cmd: >-
+      nmcli connection modify "{{ wired_conn_name }}"
+      connection.autoconnect-priority {{ wired_autoconnect_priority }}
+  when: >-
+    (_wired_prio.stdout | regex_replace('^connection.autoconnect-priority:', '') | trim)
+    != (wired_autoconnect_priority | string)
+  changed_when: true
+
+- name: Check whether the wired profile is already active
+  ansible.builtin.command:
+    cmd: nmcli -t -f GENERAL.CONNECTION device show {{ wired_ifname }}
+  register: _wired_active
+  changed_when: false
+  failed_when: false
+
+# Detached, like the WiFi role's AP switch: bringing a connection up can briefly
+# disturb the link, and if we are currently managing this host over that link a
+# synchronous `nmcli con up` would abort the play mid-task.
+- name: Activate the wired connection (detached; survives a brief link drop)
+  # Only ever with carrier present — see the carrier check above.
+  ansible.builtin.command:
+    cmd: >-
+      systemd-run --no-block bash -c
+      'sleep 2; nmcli connection up "{{ wired_conn_name }}"'
+  when:
+    - (_wired_carrier.stdout | default('0') | trim) == '1'
+    - >-
+      (_wired_active.stdout | regex_replace('^GENERAL.CONNECTION:', '') | trim)
+      != wired_conn_name
+  changed_when: true
+
+- name: Wait for the host to settle after activating the wired connection
+  ansible.builtin.wait_for_connection:
+    delay: 5
+    timeout: 90
+  when:
+    - (_wired_carrier.stdout | default('0') | trim) == '1'
+    - >-
+      (_wired_active.stdout | regex_replace('^GENERAL.CONNECTION:', '') | trim)
+      != wired_conn_name
+
+- name: Confirm the wired address is live
+  # Skipped without carrier: the profile is deliberately inactive there, so the
+  # address is legitimately absent and this must not be treated as a failure.
+  ansible.builtin.command:
+    cmd: ip -4 -o addr show {{ wired_ifname }}
+  register: _wired_verify
+  changed_when: false
+  failed_when: wired_ip4 not in _wired_verify.stdout
+  when: (_wired_carrier.stdout | default('0') | trim) == '1'

@@ -2,6 +2,11 @@
 # Per-host overrides for `baldur` (Raspberry Pi 4 Model B, Ubuntu 24.04).
 # Ubuntu 24.04 → ROS 2 Kilted Kaiju.
 
+# Hardware model, consumed by scripts/reimage-pi.sh to fill in the flash
+# script's --model flag. Documentation only — no Ansible role reads this.
+# Vocabulary matches flash-pi-card.sh: "3" | "4" | "5" | "zero2w".
+pi_model: "4"
+
 # ── Cameras ───────────────────────────────────────────────
 # baldur has a single CSI camera: an IMX219 (Raspberry Pi Camera Module v2),
 # detected at i2c@1/imx219@10. Install camera_ros and run one node, publishing
@@ -14,10 +19,12 @@ cameras_build_rpi_libcamera: false
 # Serve the camera as MJPEG over HTTP (view in a browser, e.g. from the Mac):
 #   http://baldur:8080/stream_viewer?topic=/camera0/camera/image_raw
 cameras_web_video_server: true
-# NO colour relay on baldur. The relay exists to undo a camera_ros R/B swap seen
-# with vidar's rpi-libcamera FORK (Pi 5). baldur runs STOCK Ubuntu libcamera
-# (Pi 4 / vc4 pipeline), which already publishes correct RGB on image_raw — so
-# the relay would *introduce* the swap. View /camera0/camera/image_raw directly.
+# NO colour relay. MEASURED 2026-07-31 by averaging a frame from each topic:
+# this host's image_raw is R=100 G=82 B=77 (red-dominant, correct), and
+# running the relay turned it into R=78 G=83 B=101 -- i.e. the relay CREATES
+# the blue cast here. Only vidar (Pi 5 / rpi-libcamera fork) actually needs
+# it; the Pi 4 vc4 pipeline already publishes channels matching the label.
+# View /camera0/camera/image_raw on this host.
 cameras_color_relay: false
 # Auto-restart the camera if libcamera stalls (publishes nothing without crashing).
 cameras_watchdog: true
@@ -26,7 +33,7 @@ cameras_list:
     camera: 0
     width: 640
     height: 480
-    format: RGB888
+    format: BGR888
     frame_id: camera0_optical_frame
 
 # ── X-drive teleop (REV Hub) ──────────────────────────────
@@ -34,17 +41,52 @@ cameras_list:
 # (FTDI FT230X -> /dev/ttyUSB0, 0403:6015, serial DQ2EXYCG). The hub is found
 # automatically by rhsp.enumerate_hubs(), so serial_port stays "auto".
 install_revhub: true          # install the rhsp library + serial access (roles/revhub)
-xdrive_run_driver: true       # run the cmd_vel -> REV Hub driver service (roles/xdrive)
-xdrive_run_joy_to_twist: false  # the joystick mapping happens on golem, not here
+# ── LOCAL teleop (2026-08-04): ROS dropped from the control path ──────────
+# The networked chain (ros-joy on ali -> joy_to_twist -> WiFi -> driver)
+# carried the mesh's multi-hundred-ms latency spikes into the driving feel, so
+# the 8BitDo dongle moved to baldur and one process reads it raw and drives
+# the hub directly. ROS is still used to publish encoders on /wheel_states.
+xdrive_run_driver: false        # retired: cmd_vel driver (networked path)
+xdrive_run_joy_to_twist: false  # retired: Dual Action mapper (networked path)
+xdrive_run_local_teleop: true
+# The 8BitDo dongle, by stable id so it wins regardless of jsN probe order
+# (the Dual Action may also be plugged in; it does NOT drive the robot now).
+# The reader waits for this device and survives pad sleep/wake re-enumeration.
+xdrive_joy_device: "/dev/input/by-id/usb-8BitDo_8BitDo_Ultimate_2C_Wireless_Controller*-joystick"
+# 8BitDo = XInput-style axes: 0=LX 1=LY 3=RX (2/5 are triggers resting at -1).
+# LAYOUT (Eric, 2026-08-04): arcade-style — left stick = drive + steer like a
+# differential robot (Y forward/back, X rotate); strafe isolated on the right
+# stick X. The X axes were swapped between sticks from the original layout.
+xdrive_joy_axis_yaw: 0      # left stick X = rotate
+xdrive_joy_axis_strafe: 3   # right stick X = strafe
+# STICK TEST 2026-08-04: forward/back correct with the default inversion, but
+# both X axes read the direction we want raw — don't invert them (validated
+# before the stick swap; the sense follows the physical axis).
+xdrive_joy_invert_strafe: false
+xdrive_joy_invert_yaw: false
+
+# Deterministic DDS discovery (see ali.yml): localhost for the on-robot pad
+# chain, ali for the operator-station mapper reaching this driver.
+ros_static_peers:
+  - 127.0.0.1
+  - 192.168.1.143   # ali
 # BENCH: per-motor sweep showed the front motors need ~12000 (~37%) to break
-# stiction; 6553 (20%) only moved the rear pair. 16000 (~49%) gives margin so
-# full-stick commands move all four wheels. NOTE: combined commands give a wheel
-# a fraction of this, which can fall below the stiction floor (low-input deadband)
-# — tune / add min-power compensation when driving on the ground.
+# stiction; 6553 (20%) only moved the rear pair. GROUND 2026-08-03: at 16000
+# (~49%) turning/combined commands divide power among wheels and drop some
+# below the stiction floor — "one wheel doesn't turn" while rotating in place.
+# 24000 (~73%) lifts the per-wheel components above the floor. The real cure
+# is min-power compensation in the driver; until then, more headroom.
 # Flip any backwards wheel in xdrive_wheel_signs [fl,fr,rl,rr] during ground calibration.
-xdrive_max_power: 16000
+xdrive_max_power: 24000
 xdrive_cmd_timeout_ms: 500
-xdrive_wheel_signs: "[1,1,1,1]"
+# GROUND CALIBRATION 2026-08-04, round 2 (after Eric swapped the odd FL motor;
+# all four are now matched 312 RPM units): raw button-drive shows all wheels
+# rotating with the SAME sense, so only the right side flips for the mix
+# convention (left wheels CW / right wheels CCW viewed from robot center).
+# Order is [fl, fr, rl, rr].
+xdrive_wheel_signs: "[1,-1,1,-1]"
+# All four motors matched (312 RPM) -> no per-wheel speed correction needed.
+xdrive_wheel_scales: "1,1,1,1"
 # Hub port for each wheel [front_left, front_right, rear_left, rear_right],
 # from the motor-id sweep: port0=rear-right, port1=rear-left, port2=front-left,
 # port3=front-right (clockwise wiring). So FL->2, FR->3, RL->1, RR->0.

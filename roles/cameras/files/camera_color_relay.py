@@ -36,18 +36,29 @@ class ColorRelay(Node):
         pub = self.pubs[topic]
 
         def cb(msg):
-            n = msg.height * msg.width
-            if n == 0:
+            if msg.height == 0 or msg.width == 0:
                 return
-            ch = len(msg.data) // n
+            # Rows are padded to msg.step bytes, which is NOT always
+            # width*channels — libcamera aligns each row (observed on vidar:
+            # 1456x1088 rgb8 has step=4416, while width*3 is only 4368, i.e. 48
+            # bytes of padding per row). Deriving the channel count from
+            # len(data)//(h*w) and reshaping to (h, w, ch) therefore fails with
+            # "cannot reshape array of size ...". Index via step instead, and
+            # leave the padding untouched.
+            ch = msg.step // msg.width
             if ch < 3:
                 pub.publish(msg)
                 return
-            a = np.frombuffer(bytes(msg.data), dtype=np.uint8).reshape(msg.height, msg.width, ch)
-            b = a.copy()
-            b[:, :, 0] = a[:, :, 2]
-            b[:, :, 2] = a[:, :, 0]
-            msg.data = b.tobytes()
+            buf = np.frombuffer(bytes(msg.data), dtype=np.uint8)
+            if buf.size < msg.height * msg.step:
+                return  # truncated frame; drop rather than crash the relay
+            rows = buf[: msg.height * msg.step].reshape(msg.height, msg.step)
+            px = rows[:, : msg.width * ch].reshape(msg.height, msg.width, ch)
+            out = rows.copy()
+            opx = out[:, : msg.width * ch].reshape(msg.height, msg.width, ch)
+            opx[:, :, 0] = px[:, :, 2]
+            opx[:, :, 2] = px[:, :, 0]
+            msg.data = out.tobytes()
             pub.publish(msg)
 
         return cb

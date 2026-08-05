@@ -15,7 +15,16 @@ def generate_launch_description():
         Node(
             package="camera_ros",
             executable="camera_node",
-            namespace="{{ cam.namespace }}",
+            # Namespace with the HOSTNAME, not just cameraN. Every fleet host
+            # used to publish to /camera0/camera/image_raw on the same DDS
+            # domain (42), so five machines collided on one topic and one node
+            # name: `ros2 node list` showed /camera0/camera four times with
+            # "nodes in the graph that share an exact name", publishers
+            # appeared and vanished, web_video_server subscribed to whichever
+            # host won the race, and every host advertised its peers' cameras
+            # as if they were local. Prefixing the host makes each camera
+            # globally unique: /skadi/camera0/camera/image_raw.
+            namespace="{{ inventory_hostname }}/{{ cam.namespace }}",
             name="camera",
             parameters=[{
                 "camera": {{ cam.camera }},

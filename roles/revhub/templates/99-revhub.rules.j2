@@ -2,3 +2,10 @@
 # Stable symlink + dialout group for the REV Robotics Hub (FTDI FT230X bridge).
 # Confirm idVendor/idProduct/serial with `udevadm info -a -n /dev/ttyUSB0`.
 SUBSYSTEM=="tty", SUBSYSTEMS=="usb", ATTRS{idVendor}=="{{ revhub_usb_vendor_id }}", ATTRS{idProduct}=="{{ revhub_usb_product_id }}"{% if revhub_usb_serial | length > 0 %}, ATTRS{serial}=="{{ revhub_usb_serial }}"{% endif %}, SYMLINK+="{{ revhub_serial_link }}", GROUP="{{ revhub_device_group }}", MODE="0660"
+
+# FTDI latency_timer=1ms (default 16ms). RHSP is a request/response protocol,
+# so every transaction eats whole latency windows: measured on baldur
+# 2026-08-03, bulk_input dropped 16ms -> 3ms with this set. At the default,
+# combined feedback + keep-alive + command traffic stacked past the hub's
+# 2.5s keep-alive deadline and the hub dropped to fail-safe mid-drive.
+SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTRS{idVendor}=="{{ revhub_usb_vendor_id }}", ATTRS{idProduct}=="{{ revhub_usb_product_id }}", ATTR{latency_timer}="1"

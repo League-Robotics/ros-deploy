@@ -35,6 +35,14 @@ class JoyToTwist(Node):
         cmd_topic = self.get_parameter('cmd_vel_topic').value
         self._pub = self.create_publisher(Twist, cmd_topic, 10)
         self.create_subscription(Joy, joy_topic, self._on_joy, 10)
+        # Several operator pads may feed the same cmd_vel (one joy_to_twist
+        # each). A centered pad keeps autorepeating Joy at ~20 Hz, so if every
+        # message were forwarded, an IDLE pad would stream zero Twists and
+        # stomp whichever pad is actually driving. _was_active gates that:
+        # publish while driving, publish exactly ONE zero on release (prompt
+        # stop), then go silent so the other pad owns the topic. The driver's
+        # cmd_timeout_ms remains the safety net if that zero is ever lost.
+        self._was_active = False
         self.get_logger().info(f'joy_to_twist: {joy_topic} -> {cmd_topic}')
 
     def _axis(self, msg, idx, invert):
@@ -58,7 +66,14 @@ class JoyToTwist(Node):
                                      self.get_parameter('invert_strafe').value) * lin
             t.angular.z = self._axis(msg, self.get_parameter('axis_yaw').value,
                                      self.get_parameter('invert_yaw').value) * ang
-        self._pub.publish(t)
+        active = t.linear.x != 0.0 or t.linear.y != 0.0 or t.angular.z != 0.0
+        if active:
+            self._pub.publish(t)
+            self._was_active = True
+        elif self._was_active:
+            self._pub.publish(t)   # one zero Twist: stop, then yield the topic
+            self._was_active = False
+            self.get_logger().info('sticks released — yielding cmd_vel')
 
 
 def main(args=None):

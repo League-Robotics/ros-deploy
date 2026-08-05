@@ -1,0 +1,22 @@
+---
+# playbooks/wired.yml
+# Give every fleet Pi an identical static Ethernet address, so the wired path is
+# a dependable alternative to WiFi:
+#   ansible-playbook playbooks/wired.yml --limit raspberry_pis
+#
+# Each host lands on 192.168.2.<last octet of its ansible_host>, published in DNS
+# by lorne as <host>-en. The address is DERIVED from ansible_host, not typed per
+# host, so inventory and DNS cannot drift apart.
+#
+# Safe to run over either interface: the role never touches the WiFi profile or
+# the default route, and activates the wired connection detached so a brief link
+# drop cannot abort the play.
+#
+# Enable per host/group with `configure_wired: true` (set for raspberry_pis).
+
+- name: Configure static wired Ethernet
+  hosts: raspberry_pis
+  become: true
+  roles:
+    - role: wired
+      when: configure_wired | default(false)

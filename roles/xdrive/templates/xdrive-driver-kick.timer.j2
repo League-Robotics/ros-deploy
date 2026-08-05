@@ -1,0 +1,11 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# Fires xdrive-driver-kick.service once, {{ xdrive_kick_after_boot_sec }}s after
+# every boot. See the service unit for why this exists.
+Description=Kick {{ xdrive_driver_service_name }} once after boot
+
+[Timer]
+OnBootSec={{ xdrive_kick_after_boot_sec }}
+
+[Install]
+WantedBy=timers.target

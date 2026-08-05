@@ -2,6 +2,11 @@
 # Per-host overrides for `ali` (Raspberry Pi 4 Model B, Ubuntu 24.04).
 # Ubuntu 24.04 → ROS 2 Kilted Kaiju.
 
+# Hardware model, consumed by scripts/reimage-pi.sh to fill in the flash
+# script's --model flag. Documentation only — no Ansible role reads this.
+# Vocabulary matches flash-pi-card.sh: "3" | "4" | "5" | "zero2w".
+pi_model: "4"
+
 # ── Cameras ───────────────────────────────────────────────
 # ali has a single CSI camera: an IMX219 (Raspberry Pi Camera Module v2),
 # bound at i2c@1/imx219@10 (i2c-10, address 0x10). Install camera_ros and run
@@ -15,9 +20,12 @@ cameras_build_rpi_libcamera: false
 # Serve the camera as MJPEG over HTTP (view in a browser, e.g. from the Mac):
 #   http://ali:8080/stream_viewer?topic=/camera0/camera/image_raw
 cameras_web_video_server: true
-# NO colour relay: the relay exists to undo a camera_ros R/B swap seen with
-# vidar's rpi-libcamera FORK (Pi 5). ali runs the Pi 4 / vc4 pipeline, which
-# publishes correct RGB on image_raw — the relay would *introduce* a swap.
+# NO colour relay. MEASURED 2026-07-31 by averaging a frame from each topic:
+# this host's image_raw is R=100 G=82 B=77 (red-dominant, correct), and
+# running the relay turned it into R=78 G=83 B=101 -- i.e. the relay CREATES
+# the blue cast here. Only vidar (Pi 5 / rpi-libcamera fork) actually needs
+# it; the Pi 4 vc4 pipeline already publishes channels matching the label.
+# View /camera0/camera/image_raw on this host.
 cameras_color_relay: false
 # Auto-restart the camera if libcamera stalls (publishes nothing without crashing).
 cameras_watchdog: true
@@ -26,5 +34,29 @@ cameras_list:
     camera: 0
     width: 640
     height: 480
-    format: RGB888
+    format: BGR888
     frame_id: camera0_optical_frame
+
+# ── X-drive teleop ────────────────────────────────────────
+# RETIRED as operator station 2026-08-04: networked teleop (joy -> WiFi ->
+# baldur) carried the mesh's latency spikes into the driving feel. The 8BitDo
+# dongle moved to baldur, which now runs LOCAL teleop (see baldur.yml).
+xdrive_run_joy_to_twist: false
+xdrive_run_driver: false          # ali has no REV Hub
+# Operator pad since 2026-08-03: 8BitDo Ultimate 2C on its 2.4 GHz USB dongle
+# (2dc8:310a). /var/lib/ros-joy/index.map pins it to index 3, so the topic is
+# /ali/joy/joystick3 regardless of which jsN the dongle lands on. Other mapped
+# pads (Dual Action -> joystick1, F310 -> joystick2) are currently unplugged.
+xdrive_joy_topic: /ali/joy/joystick3
+# The 8BitDo reports XInput-style axes: 0=LX, 1=LY, 3=RX (2 and 5 are the
+# TRIGGERS, resting at -1 — mapping yaw to the default axis 2 would command a
+# permanent full-rate spin). Yaw therefore comes from axis 3, not 2.
+xdrive_joy_axis_yaw: 3
+
+# Deterministic DDS discovery for the teleop chain: unicast announcements to
+# localhost (joy node <-> joy_to_twist re-match across every pad sleep/wake
+# restart) and to baldur (mapper <-> driver). WiFi multicast alone kept
+# dropping the re-discovery — pad on, dead sticks.
+ros_static_peers:
+  - 127.0.0.1
+  - 192.168.1.152   # baldur

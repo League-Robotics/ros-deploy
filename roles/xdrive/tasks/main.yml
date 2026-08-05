@@ -49,6 +49,7 @@
   notify:
     - Restart xdrive driver
     - Restart joy to twist
+    - Restart local teleop
 
 # ── xdrive_driver service (robot side: baldur) ───────────────────────────────
 - name: Deploy xdrive driver systemd unit
@@ -88,6 +89,93 @@
       ansible.builtin.file:
         path: "/etc/systemd/system/{{ xdrive_driver_service_name }}.service"
         state: absent
+      notify: Reload systemd
+
+# ── local teleop service (robot side; replaces driver+joy_to_twist) ──────────
+- name: Deploy the local teleop systemd unit
+  ansible.builtin.template:
+    src: xdrive-local-teleop.service.j2
+    dest: "/etc/systemd/system/{{ xdrive_local_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  when: xdrive_run_local_teleop | bool
+  notify:
+    - Reload systemd
+    - Restart local teleop
+
+- name: Enable and start the local teleop
+  ansible.builtin.systemd:
+    name: "{{ xdrive_local_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: xdrive_run_local_teleop | bool
+
+- name: Remove the local teleop service when disabled
+  when: not (xdrive_run_local_teleop | bool)
+  block:
+    - name: Check whether the local teleop unit is present
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ xdrive_local_service_name }}.service"
+      register: _xdrive_local_unit
+    - name: Stop and disable the local teleop
+      ansible.builtin.systemd:
+        name: "{{ xdrive_local_service_name }}"
+        state: stopped
+        enabled: false
+      when: _xdrive_local_unit.stat.exists
+    - name: Remove the local teleop unit
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ xdrive_local_service_name }}.service"
+        state: absent
+      notify: Reload systemd
+
+# ── post-boot kick timer (robot side, with the driver) ───────────────────────
+# The driver's first hub session after a cold power-on comes up dead ("ready"
+# in the log, but commands are ignored and encoders freeze); a restart heals
+# it. Restart once shortly after every boot until the driver self-recovers.
+- name: Deploy the xdrive driver post-boot kick units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - xdrive-driver-kick.service
+    - xdrive-driver-kick.timer
+  when: xdrive_run_driver | bool
+  notify: Reload systemd
+
+- name: Enable the xdrive driver kick timer
+  ansible.builtin.systemd:
+    name: xdrive-driver-kick.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: xdrive_run_driver | bool
+
+- name: Remove the kick units when the driver is disabled
+  when: not (xdrive_run_driver | bool)
+  block:
+    - name: Check whether the kick timer is present
+      ansible.builtin.stat:
+        path: /etc/systemd/system/xdrive-driver-kick.timer
+      register: _xdrive_kick_timer
+    - name: Stop and disable the kick timer
+      ansible.builtin.systemd:
+        name: xdrive-driver-kick.timer
+        state: stopped
+        enabled: false
+      when: _xdrive_kick_timer.stat.exists
+    - name: Remove the kick unit files
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}"
+        state: absent
+      loop:
+        - xdrive-driver-kick.service
+        - xdrive-driver-kick.timer
       notify: Reload systemd
 
 # ── joy_to_twist service (operator side: golem) ──────────────────────────────

@@ -1,0 +1,14 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+#
+# WORKAROUND for a cold-boot bug observed on baldur (2/2 cold boots,
+# 2026-08-03): the driver's FIRST REV Hub session after robot power-on comes up
+# dead — it logs "ready" but motor commands do nothing and /wheel_states stays
+# frozen at zero — while a plain `systemctl restart {{ xdrive_driver_service_name }}`
+# heals it every time (2/2). Until the driver retries/reopens the hub session
+# itself, kick it once shortly after boot (see xdrive-driver-kick.timer).
+Description=One-shot post-boot restart of {{ xdrive_driver_service_name }} (dead first hub session workaround)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart {{ xdrive_driver_service_name }}.service

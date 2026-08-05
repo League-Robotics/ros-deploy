@@ -16,3 +16,9 @@
     name: "{{ xdrive_joy_service_name }}"
     state: restarted
   when: xdrive_run_joy_to_twist | bool
+
+- name: Restart local teleop
+  ansible.builtin.systemd:
+    name: "{{ xdrive_local_service_name }}"
+    state: restarted
+  when: xdrive_run_local_teleop | bool

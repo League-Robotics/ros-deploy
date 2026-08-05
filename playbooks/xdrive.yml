@@ -13,4 +13,7 @@
     - role: revhub
       when: install_revhub | default(false)
     - role: xdrive
-      when: (xdrive_run_driver | default(false)) or (xdrive_run_joy_to_twist | default(false))
+      when: >-
+        (xdrive_run_driver | default(false))
+        or (xdrive_run_joy_to_twist | default(false))
+        or (xdrive_run_local_teleop | default(false))

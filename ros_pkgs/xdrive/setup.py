@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'xdrive_driver = xdrive.xdrive_driver:main',
             'joy_to_twist = xdrive.joy_to_twist:main',
+            'xdrive_local_teleop = xdrive.local_teleop:main',
         ],
     },
 )

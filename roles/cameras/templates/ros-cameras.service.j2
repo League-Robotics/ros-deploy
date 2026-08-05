@@ -1,8 +1,13 @@
 [Unit]
 # Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
 Description=ROS {{ ros_version }} cameras (camera_ros / libcamera)
-After=network-online.target
-Wants=network-online.target
+# Order after the network at BOOT, but deliberately do NOT Want/Require
+# network-online.target: these hosts are dual-homed (WiFi + Ethernet), and
+# unplugging the Ethernet cable takes network-online.target down with it, which
+# would stop the cameras even though WiFi is still up. The camera hardware is
+# local — it does not need the network at all — so the service must outlive any
+# interface change.
+After=network.target
 
 [Service]
 Type=simple
@@ -18,8 +23,21 @@ ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && export L
 {% else %}
 ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec ros2 launch {{ cameras_config_dir }}/cameras.launch.py'
 {% endif %}
-Restart=on-failure
+# camera_ros does not always exit on SIGTERM -- it can sit in 'deactivating'
+# until systemd's default 90s stop timeout expires, and a restart issued during
+# that window silently does nothing. Kill quickly and escalate to SIGKILL.
+TimeoutStopSec=8
+KillMode=mixed
+SendSIGKILL=yes
+# Restart=always, NOT on-failure: camera_ros can exit with status 0 when its
+# network or DDS environment changes underneath it (observed after unplugging
+# Ethernet on a dual-homed host), and on-failure treats a clean exit as
+# "job done" -- leaving the cameras dead until someone restarts them by hand.
+Restart=always
 RestartSec=5
+# Do not let repeated quick restarts trip systemd's rate limiter into giving up
+# permanently; keep retrying instead.
+StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target

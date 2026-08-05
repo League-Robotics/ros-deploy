@@ -38,9 +38,18 @@ ros_user_ssh_password_auth: true
 ros_user_authorized_keys:
   - "{{ playbook_dir }}/../config/keys/eric.pub"
 
-# Extra ROS workspace overlays to source. Each entry is a workspace root; the
-# shell sources "<root>/install/setup.zsh" if it exists and shows it in the
-# prompt's overlay list. e.g. ['/home/ros/ros2_ws'].
+# The shared colcon workspace every fleet role builds into — heartbeat, xdrive
+# and fleet_packages all use /opt/ros_ws. The ros account exists only to run
+# ROS, so this overlay is ALWAYS sourced at login (when it exists); it is not
+# optional the way ros_user_workspace_overlays entries are. Without it `ros2 run
+# xdrive ...` and `ros2 pkg list` can't see the fleet's own packages, even
+# though the systemd units source it explicitly and work fine.
+# Set to "" to disable.
+ros_user_shared_overlay: /opt/ros_ws
+
+# Extra ROS workspace overlays to source, sourced AFTER the shared overlay above.
+# Each entry is a workspace root; the shell sources "<root>/install/setup.zsh"
+# if it exists and shows it in the prompt's overlay list. e.g. ['/home/ros/ros2_ws'].
 ros_user_workspace_overlays: []
 
 # Fleet-wide drop-in dir: every *.zsh here is sourced (in order) by the ros

@@ -15,6 +15,14 @@ Type=simple
 User={{ joy_user }}
 Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
 Environment=ROS_LOCALHOST_ONLY=0
+{% if ros_static_peers is defined %}
+# Unicast discovery to these peers in ADDITION to multicast. WiFi multicast is
+# lossy here, and this unit restarts on every gamepad sleep/wake (the dongle
+# re-enumerates) — each restart is a fresh DDS participant that must re-discover
+# its subscribers. Relying on multicast made that a dice roll (pad on -> dead
+# sticks, observed 2026-08-03/04); 127.0.0.1 guarantees the local match.
+Environment=ROS_STATIC_PEERS={{ ros_static_peers | join(';') }}
+{% endif %}
 ExecStart={{ joy_config_dir }}/joy-publish.sh %i
 Restart=on-failure
 RestartSec=2

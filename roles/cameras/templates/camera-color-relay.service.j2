@@ -1,8 +1,7 @@
 [Unit]
 # Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
 Description=ROS {{ ros_version }} camera colour relay (camera_ros R/B swap fix)
-After=network-online.target {{ cameras_service_name }}.service
-Wants=network-online.target
+After=network.target {{ cameras_service_name }}.service
 PartOf={{ cameras_service_name }}.service
 BindsTo={{ cameras_service_name }}.service
 
@@ -11,9 +10,19 @@ Type=simple
 User={{ cameras_user }}
 Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
 Environment=ROS_LOCALHOST_ONLY=0
-ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec python3 {{ cameras_config_dir }}/camera_color_relay.py {% for cam in cameras_list %}/{{ cam.namespace }}/camera/image_raw {% endfor %}'
-Restart=on-failure
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec python3 {{ cameras_config_dir }}/camera_color_relay.py {% for cam in cameras_list if cam.swap_rb | default(false) %}/{{ inventory_hostname }}/{{ cam.namespace }}/camera/image_raw {% endfor %}'
+# # relay does not always exit on SIGTERM -- it can sit in
+# 'deactivating' until systemd's default 90s stop timeout expires, and a
+# restart during that window silently does nothing. Kill it quickly and
+# escalate to SIGKILL so a restart is always fast and always effective.
+TimeoutStopSec=8
+KillMode=mixed
+SendSIGKILL=yes
+# Restart=always for the same reason as the other camera units: a clean exit
+# on a network change must not leave the relay dead.
+Restart=always
 RestartSec=5
+StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target
