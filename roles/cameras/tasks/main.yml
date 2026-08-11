@@ -5,6 +5,21 @@
 # camera_ros publishes <ns>/image_raw, <ns>/image_raw/compressed and
 # <ns>/camera_info so peers (e.g. the Mac) can view the streams over the LAN.
 
+# Resolve each camera's R/B swap from the sensor table (see defaults). After
+# this, templates use cameras_list_resolved and never guess.
+- name: Resolve per-camera R/B swap from the sensor table
+  ansible.builtin.set_fact:
+    cameras_list_resolved: >-
+      {{ (cameras_list_resolved | default([])) + [ item | combine({'swap_rb':
+         item.swap_rb | default(cameras_sensor_rb_swapped.get(item.sensor | default('') | lower, false))}) ] }}
+  loop: "{{ cameras_list }}"
+
+- name: Derive whether the colour relay is needed
+  ansible.builtin.set_fact:
+    cameras_color_relay_effective: >-
+      {{ (cameras_color_relay | bool) or
+         (cameras_list_resolved | default([]) | selectattr('swap_rb') | list | length > 0) }}
+
 - name: Install ROS camera packages (camera_ros + image transport)
   ansible.builtin.apt:
     name: "{{ cameras_apt_packages }}"
@@ -78,7 +93,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: cameras_color_relay | bool
+  when: cameras_color_relay_effective | bool
 
 - name: Deploy camera colour relay systemd unit
   ansible.builtin.template:
@@ -87,7 +102,7 @@
     owner: root
     group: root
     mode: "0644"
-  when: cameras_color_relay | bool
+  when: cameras_color_relay_effective | bool
   notify:
     - Reload systemd
     - Restart camera colour relay
@@ -98,12 +113,12 @@
     enabled: true
     state: started
     daemon_reload: true
-  when: cameras_color_relay | bool
+  when: cameras_color_relay_effective | bool
 
 # Teardown: if the relay is disabled, remove any previously-deployed relay so the
 # flag is declarative. (Stock-libcamera hosts must NOT run it — it would swap R/B.)
 - name: Remove camera colour relay when disabled
-  when: not (cameras_color_relay | bool)
+  when: not (cameras_color_relay_effective | bool)
   block:
     - name: Check whether the colour relay unit is present
       ansible.builtin.stat:

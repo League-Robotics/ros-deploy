@@ -15,7 +15,11 @@
 # Enable per host/group with `configure_wired: true` (set for raspberry_pis).
 
 - name: Configure static wired Ethernet
-  hosts: raspberry_pis
+  # ros_nodes, not raspberry_pis: membership in the Pi group is about desktop/
+  # defaults, but any fleet host can opt into a wired address with
+  # `configure_wired: true` (baldur does so from host_vars after leaving the
+  # Pi group, 2026-08-08). The when-guard keeps everyone else untouched.
+  hosts: ros_nodes
   become: true
   roles:
     - role: wired

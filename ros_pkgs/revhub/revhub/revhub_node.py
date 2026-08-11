@@ -30,7 +30,7 @@ import time
 import rhsp
 import serial
 
-from xdrive.kinematics import WheelConfig, mix
+from revhub.kinematics import WheelConfig, mix
 
 log = logging.getLogger('local_teleop')
 
@@ -43,8 +43,24 @@ ROUTINE_FAULT_BITS = int(rhsp.ModuleStatusBits.KeepAliveTimeout) | int(rhsp.Modu
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     tobool = lambda s: str(s).lower() in ('1', 'true', 'yes')
+    p.add_argument('--joy-source', choices=('device', 'ros', 'twist'), default='device',
+                   help='device: read the joystick hardware directly (no ROS in '
+                        'the control path). ros: subscribe to a sensor_msgs/Joy '
+                        'topic — same mixing/calibration, commands come from the '
+                        'joy publisher (expected to run on THIS host). twist: '
+                        'subscribe body-velocity motion commands '
+                        '(geometry_msgs/Twist on --cmd-vel-topic) — the normal '
+                        'mode when motion_control owns command arbitration.')
+    p.add_argument('--cmd-vel-topic', default='/cmd_vel',
+                   help='twist source: motion-command topic (linear.x forward, '
+                        'linear.y left, angular.z CCW, each nominally [-1, 1])')
+    p.add_argument('--joy-topic', default='/baldur/joy/joystick0',
+                   help='ros source: Joy topic to subscribe')
+    p.add_argument('--joy-timeout-ms', type=int, default=500,
+                   help='ros source: zero the motors when no Joy message arrives '
+                        'within this window')
     p.add_argument('--device', default='/dev/input/js0',
-                   help='joystick device path or glob (first match wins)')
+                   help='device source: joystick path or glob (first match wins)')
     p.add_argument('--axis-forward', type=int, default=1)
     p.add_argument('--axis-strafe', type=int, default=0)
     p.add_argument('--axis-yaw', type=int, default=3)
@@ -111,6 +127,8 @@ class LocalTeleop:
                 self.cal_map[int(b)] = int(port)
         self._last_cal = None
         self.js_ok = False
+        self._last_joy_mono = 0.0     # ros/twist source: monotonic time of last command
+        self.twist_cmd = (0.0, 0.0, 0.0)   # twist source: (forward, strafe, yaw)
         self.applied = [0, 0, 0, 0]
         self.hub = None
         self.vels = None       # velocity mode: HubVelocityController per WHEEL
@@ -233,8 +251,10 @@ class LocalTeleop:
         tick = 0
         while not self.stop.is_set():
             t0 = time.monotonic()
+            if a.joy_source in ('ros', 'twist'):
+                self.js_ok = (time.monotonic() - self._last_joy_mono) * 1000.0 < a.joy_timeout_ms
             cal = None
-            if self.js_ok:
+            if self.js_ok and a.joy_source != 'twist':
                 for b, port in self.cal_map.items():
                     if self.buttons.get(b):
                         cal = (b, port)
@@ -248,6 +268,10 @@ class LocalTeleop:
                 self._last_cal = cal
             if cal:
                 target = [a.cal_velocity if self.ports[w] == cal[1] else 0 for w in range(4)]
+            elif self.js_ok and a.joy_source == 'twist':
+                fwd, strafe, yaw = self.twist_cmd
+                target = mix(forward=fwd, strafe=strafe, yaw=yaw, cfg=self.cfg)
+                target = [int(t * s) for t, s in zip(target, self.scales)]
             elif self.js_ok:
                 target = mix(forward=self.axis(a.axis_forward, a.invert_forward),
                              strafe=self.axis(a.axis_strafe, a.invert_strafe),
@@ -312,31 +336,63 @@ class LocalTeleop:
         else:
             self._strikes = 0
 
-    # ── optional ROS feedback thread (never in the control path) ──────────
-    def ros_feedback(self):
+    # ── ROS thread: encoder feedback out; Joy in when --joy-source ros ─────
+    def _on_joy_msg(self, msg):
+        self.axes = {i: float(v) for i, v in enumerate(msg.axes)}
+        self.buttons = {i: bool(v) for i, v in enumerate(msg.buttons)}
+        self._last_joy_mono = time.monotonic()
+
+    def _on_twist_msg(self, msg):
+        self.twist_cmd = (float(msg.linear.x), float(msg.linear.y), float(msg.angular.z))
+        self._last_joy_mono = time.monotonic()
+
+    def ros_thread(self):
+        ros_source = self.args.joy_source in ('ros', 'twist')
         try:
             import rclpy
-            from sensor_msgs.msg import JointState
+            from sensor_msgs.msg import JointState, Joy
+            from geometry_msgs.msg import Twist
             rclpy.init()
-            node = rclpy.create_node('xdrive_local_teleop')
+            node = rclpy.create_node('revhub')
             pub = node.create_publisher(JointState, self.args.joint_topic, 10)
+            if self.args.joy_source == 'ros':
+                node.create_subscription(Joy, self.args.joy_topic, self._on_joy_msg, 10)
+                log.info('ROS joy source: subscribing %s (timeout %d ms)',
+                         self.args.joy_topic, self.args.joy_timeout_ms)
+            elif self.args.joy_source == 'twist':
+                node.create_subscription(Twist, self.args.cmd_vel_topic, self._on_twist_msg, 10)
+                log.info('motion-command source: subscribing %s (timeout %d ms)',
+                         self.args.cmd_vel_topic, self.args.joy_timeout_ms)
             log.info('ROS feedback: publishing %s at %.1f Hz',
                      self.args.joint_topic, self.args.feedback_hz)
         except Exception as exc:
+            if ros_source:
+                # No ROS = no commands at all in this mode. Die loudly and let
+                # systemd restart us rather than sit here deaf and look "ready".
+                log.error('ROS init failed with joy-source=ros (%s) — exiting', exc)
+                self.stop.set()
+                return
             log.warning('ROS feedback disabled (%s) — driving unaffected', exc)
             return
         names = ['front_left', 'front_right', 'rear_left', 'rear_right']
+        fb_period = 1.0 / self.args.feedback_hz
+        next_fb = time.monotonic()
         while not self.stop.is_set():
-            self.stop.wait(1.0 / self.args.feedback_hz)
             try:
-                bulk = self.hub.bulk_input()
-                js = JointState()
-                js.header.stamp = node.get_clock().now().to_msg()
-                js.name = names
-                js.position = [float(getattr(bulk, f'motor{self.ports[w]}_encoder')) for w in range(4)]
-                js.velocity = [float(getattr(bulk, f'motor{self.ports[w]}_velocity')) for w in range(4)]
-                js.effort = [float(p) for p in self.applied]
-                pub.publish(js)
+                if ros_source:
+                    rclpy.spin_once(node, timeout_sec=0.05)
+                else:
+                    self.stop.wait(fb_period)
+                if time.monotonic() >= next_fb:
+                    next_fb = time.monotonic() + fb_period
+                    bulk = self.hub.bulk_input()
+                    js = JointState()
+                    js.header.stamp = node.get_clock().now().to_msg()
+                    js.name = names
+                    js.position = [float(getattr(bulk, f'motor{self.ports[w]}_encoder')) for w in range(4)]
+                    js.velocity = [float(getattr(bulk, f'motor{self.ports[w]}_velocity')) for w in range(4)]
+                    js.effort = [float(p) for p in self.applied]
+                    pub.publish(js)
             except Exception:
                 pass   # feedback is best-effort; the control loop owns recovery
 
@@ -349,10 +405,12 @@ def main(argv=None):
     signal.signal(signal.SIGTERM, lambda *_: t.stop.set())
     signal.signal(signal.SIGINT, lambda *_: t.stop.set())
     t.hub = t.open_validated_session()
-    threading.Thread(target=t.js_reader, daemon=True, name='js-reader').start()
-    threading.Thread(target=t.ros_feedback, daemon=True, name='ros-feedback').start()
+    if args.joy_source == 'device':
+        threading.Thread(target=t.js_reader, daemon=True, name='js-reader').start()
+    threading.Thread(target=t.ros_thread, daemon=True, name='ros-thread').start()
     log.info('local teleop ready: %s -> hub ports %s (%s mode, full-stick=%d, slew=%d/tick @%.0fHz)',
-             args.device, t.ports, args.control_mode,
+             args.joy_topic if args.joy_source == 'ros' else args.device,
+             t.ports, args.control_mode,
              args.max_velocity if t.velocity_mode else args.max_power,
              args.slew, args.apply_hz)
     t.run_control()

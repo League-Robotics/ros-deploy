@@ -11,6 +11,15 @@ xdrive_user: "{{ ros_user_name | default('ros') }}"   # already in dialout via r
 # Which services THIS host runs (set per host in inventory/host_vars).
 xdrive_run_driver: false
 xdrive_run_joy_to_twist: false
+# The current robot architecture (baldur, 2026-08-08): revhub owns the hub and
+# consumes Twist motion commands; motion_control arbitrates joystick + planner
+# onto that topic. Both on the robot host.
+xdrive_run_revhub: false
+xdrive_run_motion_control: false
+xdrive_revhub_service_name: revhub
+xdrive_motion_service_name: motion-control
+# Planner input to motion_control (silent until a planner exists).
+xdrive_planner_topic: "/{{ inventory_hostname }}/planner/cmd_vel"
 # Local teleop: joystick plugged into THIS host drives the hub directly —
 # no ROS/WiFi in the control path (ROS publishes encoders only). The robot-side
 # replacement for driver+joy_to_twist when mesh latency makes networked teleop
@@ -18,6 +27,13 @@ xdrive_run_joy_to_twist: false
 xdrive_run_local_teleop: false
 xdrive_local_service_name: xdrive-local-teleop
 xdrive_joy_device: /dev/input/js0     # path or glob; first match wins
+# Where the teleop gets its commands: "device" reads the pad hardware raw;
+# "ros" subscribes a sensor_msgs/Joy topic (the joy publisher normally runs on
+# the same host, so the loop stays local — but the topic is observable and
+# overridable fleet-wide).
+xdrive_local_joy_source: device
+xdrive_local_joy_topic: "/{{ inventory_hostname }}/joy/joystick0"
+xdrive_local_joy_timeout_ms: 500
 xdrive_local_apply_hz: 50             # motor apply/coalesce rate
 # velocity (default): hub-firmware PID per wheel — synchronized speeds, torque
 # under load. power: open-loop duty (the mode that drove "seriously terribly"

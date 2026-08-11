@@ -73,8 +73,10 @@ cameras_list:
     width: 640
     height: 480
     format: BGR888
-    # IMX296 needs the R/B swap (see the sensor note below).
-    swap_rb: true
+    # Declaring the sensor is all that's needed: the cameras role derives the
+    # R/B swap (and relay) from its sensor table. IMX296 -> swapped -> view
+    # /skadi/camera0/camera/image_color.
+    sensor: imx296
     # Cap the publish rate. Uncapped, this sensor free-runs at ~30 Hz, which is
     # more than the Pi 4 needs to serve and enough to make RELIABLE/KEEP_LAST(1)
     # subscribers report dropped messages. 10 Hz is plenty for viewing and leaves

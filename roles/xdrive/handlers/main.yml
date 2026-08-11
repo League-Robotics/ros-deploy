@@ -22,3 +22,15 @@
     name: "{{ xdrive_local_service_name }}"
     state: restarted
   when: xdrive_run_local_teleop | bool
+
+- name: Restart revhub
+  ansible.builtin.systemd:
+    name: "{{ xdrive_revhub_service_name }}"
+    state: restarted
+  when: xdrive_run_revhub | bool
+
+- name: Restart motion control
+  ansible.builtin.systemd:
+    name: "{{ xdrive_motion_service_name }}"
+    state: restarted
+  when: xdrive_run_motion_control | bool

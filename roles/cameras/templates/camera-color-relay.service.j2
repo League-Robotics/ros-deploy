@@ -10,7 +10,7 @@ Type=simple
 User={{ cameras_user }}
 Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
 Environment=ROS_LOCALHOST_ONLY=0
-ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec python3 {{ cameras_config_dir }}/camera_color_relay.py {% for cam in cameras_list if cam.swap_rb | default(false) %}/{{ inventory_hostname }}/{{ cam.namespace }}/camera/image_raw {% endfor %}'
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec python3 {{ cameras_config_dir }}/camera_color_relay.py {% for cam in cameras_list_resolved if cam.swap_rb %}/{{ inventory_hostname }}/{{ cam.namespace }}/camera/image_raw {% endfor %}'
 # # relay does not always exit on SIGTERM -- it can sit in
 # 'deactivating' until systemd's default 90s stop timeout expires, and a
 # restart during that window silently does nothing. Kill it quickly and

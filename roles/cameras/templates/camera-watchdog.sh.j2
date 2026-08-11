@@ -38,7 +38,7 @@ export HOME=/root ROS_LOG_DIR=/tmp/camera-watchdog
 # Probe the topic the VIEWER actually reads. On a swap_rb camera that is the
 # relay's image_color output, not image_raw -- probing image_raw there would
 # report "healthy" while the relay was dead and every viewer saw black.
-TOPIC="/{{ inventory_hostname }}/{{ cameras_list[0].namespace }}/camera/{% if cameras_list[0].swap_rb | default(false) %}image_color{% else %}image_raw{% endif %}"
+TOPIC="/{{ inventory_hostname }}/{{ cameras_list_resolved[0].namespace }}/camera/{% if cameras_list_resolved[0].swap_rb %}image_color{% else %}image_raw{% endif %}"
 MIN_RATE={{ cameras_watchdog_min_rate }}
 
 # `ros2 topic hz` needs a discovery window before it reports anything. On a

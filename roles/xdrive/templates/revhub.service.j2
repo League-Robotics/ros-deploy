@@ -1,0 +1,29 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+#
+# The REV hub owner: sole holder of the hub serial session. Subscribes body
+# velocity motion commands (geometry_msgs/Twist on {{ xdrive_cmd_vel_topic }}) and
+# applies hub-firmware velocity PID per wheel; publishes wheel encoders as
+# JointState. Commands normally come from motion-control.service (joystick /
+# planner arbitration). Position commands are a planned future mode.
+Description=REV hub control (motion commands -> hub velocity PID)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ xdrive_user }}
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+Environment=FASTDDS_BUILTIN_TRANSPORTS=UDPv4
+{% if ros_static_peers is defined %}
+Environment=ROS_STATIC_PEERS={{ ros_static_peers | join(';') }}
+{% endif %}
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && source {{ xdrive_workspace_dir }}/install/setup.bash && exec ros2 run revhub revhub_node --joy-source twist --cmd-vel-topic {{ xdrive_cmd_vel_topic }} --joy-timeout-ms {{ xdrive_local_joy_timeout_ms }} --control-mode {{ xdrive_control_mode }} --max-velocity {{ xdrive_max_velocity }} --max-power {{ xdrive_max_power }} --motor-ports "{{ xdrive_motor_ports | replace("[", "") | replace("]", "") | replace(" ", "") }}" --wheel-signs="{{ xdrive_wheel_signs | replace("[", "") | replace("]", "") | replace(" ", "") }}" --wheel-scales="{{ xdrive_wheel_scales | default("1,1,1,1") }}" --forward-scale {{ xdrive_forward_scale }} --strafe-scale {{ xdrive_strafe_scale }} --yaw-scale {{ xdrive_yaw_scale }} --serial-port "{{ xdrive_serial_port }}" --apply-hz {{ xdrive_local_apply_hz }} --slew {{ xdrive_local_slew }} --quantum {{ xdrive_local_quantum }} --feedback-hz {{ xdrive_feedback_rate_hz }} --joint-topic {{ xdrive_joint_state_topic }}'
+# Exit(1) when no healthy hub session can be established — restarting IS the
+# cold-boot retry loop.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -13,10 +13,21 @@
     group: root
     mode: "0755"
 
-- name: Sync xdrive package sources into the workspace
+- name: Remove the pre-rename xdrive package from the workspace
+  # The package was renamed xdrive -> revhub (2026-08-08). Leftover build
+  # products would keep the old entry points on ros2's path forever.
+  ansible.builtin.file:
+    path: "{{ xdrive_workspace_dir }}/{{ item }}"
+    state: absent
+  loop:
+    - src/xdrive
+    - build/xdrive
+    - install/xdrive
+
+- name: Sync revhub package sources into the workspace
   ansible.posix.synchronize:
-    src: "{{ playbook_dir }}/../ros_pkgs/xdrive/"
-    dest: "{{ xdrive_workspace_dir }}/src/xdrive/"
+    src: "{{ playbook_dir }}/../ros_pkgs/revhub/"
+    dest: "{{ xdrive_workspace_dir }}/src/revhub/"
     delete: true
     rsync_opts:
       - "--exclude=build"
@@ -31,17 +42,17 @@
     name: python3-colcon-common-extensions
     state: present
 
-- name: Check whether xdrive install artifacts already exist
+- name: Check whether revhub install artifacts already exist
   ansible.builtin.stat:
-    path: "{{ xdrive_workspace_dir }}/install/xdrive"
+    path: "{{ xdrive_workspace_dir }}/install/revhub"
   register: xdrive_install_stat
 
-- name: Build xdrive package with colcon
+- name: Build revhub package with colcon
   ansible.builtin.shell: |
     set -eo pipefail
     source /opt/ros/{{ ros_version }}/setup.bash
     cd {{ xdrive_workspace_dir }}
-    colcon build --packages-select xdrive --symlink-install
+    colcon build --packages-select revhub --symlink-install
   args:
     executable: /bin/bash
   when: xdrive_sync is changed or not xdrive_install_stat.stat.exists
@@ -50,6 +61,8 @@
     - Restart xdrive driver
     - Restart joy to twist
     - Restart local teleop
+    - Restart revhub
+    - Restart motion control
 
 # ── xdrive_driver service (robot side: baldur) ───────────────────────────────
 - name: Deploy xdrive driver systemd unit
@@ -90,6 +103,45 @@
         path: "/etc/systemd/system/{{ xdrive_driver_service_name }}.service"
         state: absent
       notify: Reload systemd
+
+# ── revhub + motion-control services (current robot architecture) ────────────
+- name: Deploy the revhub and motion-control systemd units
+  ansible.builtin.template:
+    src: "{{ item.tmpl }}"
+    dest: "/etc/systemd/system/{{ item.name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { tmpl: revhub.service.j2, name: "{{ xdrive_revhub_service_name }}", run: "{{ xdrive_run_revhub }}" }
+    - { tmpl: motion-control.service.j2, name: "{{ xdrive_motion_service_name }}", run: "{{ xdrive_run_motion_control }}" }
+  when: item.run | bool
+  notify:
+    - Reload systemd
+    - Restart revhub
+    - Restart motion control
+
+- name: Enable and start revhub / motion-control
+  ansible.builtin.systemd:
+    name: "{{ item.name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop:
+    - { name: "{{ xdrive_revhub_service_name }}", run: "{{ xdrive_run_revhub }}" }
+    - { name: "{{ xdrive_motion_service_name }}", run: "{{ xdrive_run_motion_control }}" }
+  when: item.run | bool
+
+- name: Remove revhub / motion-control when disabled
+  ansible.builtin.include_tasks: remove_unit.yml
+  loop:
+    - "{{ xdrive_revhub_service_name }}"
+    - "{{ xdrive_motion_service_name }}"
+  loop_control:
+    loop_var: _unit_name
+  when: >-
+    (_unit_name == xdrive_revhub_service_name and not (xdrive_run_revhub | bool))
+    or (_unit_name == xdrive_motion_service_name and not (xdrive_run_motion_control | bool))
 
 # ── local teleop service (robot side; replaces driver+joy_to_twist) ──────────
 - name: Deploy the local teleop systemd unit

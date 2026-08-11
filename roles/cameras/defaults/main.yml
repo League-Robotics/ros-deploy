@@ -73,9 +73,25 @@ cameras_web_video_server: false
 cameras_web_video_port: 8080
 cameras_web_video_service_name: web-video-server
 
-# Work around camera_ros publishing images with R/B swapped vs the encoding
-# label: a relay republishes each <ns>/camera/image_raw as <ns>/camera/image_color
-# with the channels corrected. View the *image_color* topics when enabled.
+# ── R/B channel swap: a SENSOR property, derived — do not hand-tune ──────────
+# camera_ros publishes some sensors with R/B reversed vs the encoding label.
+# Measured on hardware 2026-07-31 (history in host_vars/skadi.yml): the swap
+# follows the SENSOR MODEL, not the host, Pi generation, or libcamera pipeline.
+# Fixing it per host is why the fleet kept flip-flopping ("more than half the
+# time the cameras are red/blue swapped" — Eric, 2026-08-09).
+#
+# THE RULE: declare `sensor:` on every cameras_list entry. swap_rb and the
+# colour-relay service derive from this table automatically; the corrected
+# stream is <ns>/camera/image_color, and the watchdog probes the right topic.
+# Only set swap_rb explicitly for a sensor not yet in this table — and then
+# add the measurement here so the next camera is right the first time.
+cameras_sensor_rb_swapped:
+  imx296: true     # Global Shutter Camera — mislabeled, needs the swap
+  imx219: false    # Camera Module v2 — correct as published
+  imx708: false    # Camera Module 3 — correct as published
+
+# Force-enable the relay regardless of the table (rarely needed). When any
+# camera resolves to swap_rb, the relay turns on by itself.
 cameras_color_relay: false
 cameras_color_relay_service_name: camera-color-relay
 

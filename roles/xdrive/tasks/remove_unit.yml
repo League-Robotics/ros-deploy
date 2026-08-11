@@ -1,0 +1,21 @@
+---
+# Stop, disable and remove one systemd unit if present. Included with
+# loop_var _unit_name by tasks/main.yml for units whose run-flag is false.
+- name: "Check whether {{ _unit_name }} is present"
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ _unit_name }}.service"
+  register: _ru_stat
+
+- name: "Stop and disable {{ _unit_name }}"
+  ansible.builtin.systemd:
+    name: "{{ _unit_name }}"
+    state: stopped
+    enabled: false
+  when: _ru_stat.stat.exists
+
+- name: "Remove {{ _unit_name }} unit file"
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ _unit_name }}.service"
+    state: absent
+  when: _ru_stat.stat.exists
+  notify: Reload systemd

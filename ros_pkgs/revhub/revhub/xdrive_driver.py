@@ -33,7 +33,7 @@ from sensor_msgs.msg import JointState
 import rhsp
 import serial
 
-from xdrive.kinematics import WheelConfig, mix
+from revhub.kinematics import WheelConfig, mix
 
 WHEEL_NAMES = ['front_left', 'front_right', 'rear_left', 'rear_right']
 SAFETY_HZ = 25.0   # sole motor-apply rate: latest target only, ≤25 serial bursts/s

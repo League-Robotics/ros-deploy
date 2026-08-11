@@ -17,3 +17,5 @@
         (xdrive_run_driver | default(false))
         or (xdrive_run_joy_to_twist | default(false))
         or (xdrive_run_local_teleop | default(false))
+        or (xdrive_run_revhub | default(false))
+        or (xdrive_run_motion_control | default(false))

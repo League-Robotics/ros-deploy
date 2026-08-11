@@ -35,6 +35,7 @@ cameras_list:
     width: 640
     height: 480
     format: BGR888
+    sensor: imx219    # correct colors as published -> view image_raw
     frame_id: camera0_optical_frame
 
 # ── X-drive teleop ────────────────────────────────────────

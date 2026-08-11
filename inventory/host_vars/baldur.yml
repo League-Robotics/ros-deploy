@@ -7,6 +7,13 @@
 # Vocabulary matches flash-pi-card.sh: "3" | "4" | "5" | "zero2w".
 pi_model: "4"
 
+# baldur was removed from [raspberry_pis] (2026-08-08), so the group defaults
+# no longer apply. Pin the two this robot depends on: the joy publisher feeds
+# the teleop's /baldur/joy/joystick0 subscription, and the wired profile is the
+# image/data path to skadi.
+install_joy: true
+configure_wired: true
+
 # ── Cameras ───────────────────────────────────────────────
 # baldur has a single CSI camera: an IMX219 (Raspberry Pi Camera Module v2),
 # detected at i2c@1/imx219@10. Install camera_ros and run one node, publishing
@@ -34,6 +41,7 @@ cameras_list:
     width: 640
     height: 480
     format: BGR888
+    sensor: imx219    # correct colors as published -> view image_raw
     frame_id: camera0_optical_frame
 
 # ── X-drive teleop (REV Hub) ──────────────────────────────
@@ -48,11 +56,19 @@ install_revhub: true          # install the rhsp library + serial access (roles/
 # the hub directly. ROS is still used to publish encoders on /wheel_states.
 xdrive_run_driver: false        # retired: cmd_vel driver (networked path)
 xdrive_run_joy_to_twist: false  # retired: Dual Action mapper (networked path)
-xdrive_run_local_teleop: true
 # The 8BitDo dongle, by stable id so it wins regardless of jsN probe order
 # (the Dual Action may also be plugged in; it does NOT drive the robot now).
 # The reader waits for this device and survives pad sleep/wake re-enumeration.
 xdrive_joy_device: "/dev/input/by-id/usb-8BitDo_8BitDo_Ultimate_2C_Wireless_Controller*-joystick"
+# 2026-08-08 architecture (package renamed xdrive -> revhub): three nodes, all
+# on baldur. ros-joy publishes /baldur/joy/joystick0 (8BitDo, index 0 in the
+# index.map); motion_control arbitrates that joystick (priority) plus the
+# planner topic onto /cmd_vel; revhub owns the hub and consumes those Twist
+# motion commands with per-wheel velocity PID. Calibration unchanged.
+xdrive_run_local_teleop: false   # superseded by revhub + motion-control
+xdrive_run_revhub: true
+xdrive_run_motion_control: true
+xdrive_local_joy_topic: /baldur/joy/joystick0
 # 8BitDo = XInput-style axes: 0=LX 1=LY 3=RX (2/5 are triggers resting at -1).
 # LAYOUT (Eric, 2026-08-04): arcade-style — left stick = drive + steer like a
 # differential robot (Y forward/back, X rotate); strafe isolated on the right

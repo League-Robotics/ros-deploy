@@ -1,13 +1,14 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>xdrive</name>
-  <version>0.1.0</version>
+  <name>revhub</name>
+  <version>0.2.0</version>
   <description>
-    X-drive teleop for a 4-motor holonomic robot driven by a REV Robotics Hub.
-    joy_to_twist maps a gamepad (Joy) to a Twist on cmd_vel; xdrive_driver applies
-    X-drive inverse kinematics and drives the hub over serial via the rhsp library,
-    publishing wheel encoder feedback as JointState.
+    REV Robotics Hub control for a 4-motor holonomic robot. revhub_node owns the
+    hub serial session and subscribes body-velocity motion commands (Twist:
+    forward, sideways, angular) applying hub-firmware velocity PID per wheel;
+    motion_control arbitrates command sources (joystick topic, motion planner)
+    onto cmd_vel. Wheel encoder feedback is published as JointState.
   </description>
   <maintainer email="eric.busboom@jointheleague.org">Eric Busboom</maintainer>
   <license>MIT</license>

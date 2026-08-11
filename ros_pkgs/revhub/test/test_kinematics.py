@@ -1,5 +1,5 @@
 """Unit tests for the pure X-drive mixing (no ROS/rhsp needed: `pytest`)."""
-from xdrive.kinematics import WheelConfig, mix
+from revhub.kinematics import WheelConfig, mix
 
 CFG = WheelConfig(max_power=8000)
 
