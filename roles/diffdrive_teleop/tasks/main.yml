@@ -1,0 +1,63 @@
+---
+# roles/diffdrive_teleop/tasks/main.yml
+# Build ros_pkgs/diffdrive_teleop into the shared overlay and run joy_to_twist.
+
+- name: Ensure colcon workspace src/ directory exists
+  ansible.builtin.file:
+    path: "{{ diffdrive_teleop_workspace_dir }}/src"
+    state: directory
+    owner: "{{ diffdrive_teleop_user }}"
+    group: "{{ diffdrive_teleop_user }}"
+    mode: "0755"
+
+- name: Sync diffdrive_teleop package sources into the workspace
+  ansible.builtin.synchronize:
+    src: "{{ playbook_dir }}/../ros_pkgs/diffdrive_teleop/"
+    dest: "{{ diffdrive_teleop_workspace_dir }}/src/diffdrive_teleop/"
+    delete: true
+    rsync_opts:
+      - "--exclude=__pycache__"
+      - "--exclude=.pytest_cache"
+  register: _dt_sync
+
+- name: Ensure python3-colcon-common-extensions is installed
+  ansible.builtin.apt:
+    name: python3-colcon-common-extensions
+    state: present
+
+- name: Check whether diffdrive_teleop install artifacts already exist
+  ansible.builtin.stat:
+    path: "{{ diffdrive_teleop_workspace_dir }}/install/diffdrive_teleop"
+  register: _dt_install_stat
+
+# Rebuild only when sources changed or the overlay is missing — a colcon build
+# on every run would make the play slow and always-changed.
+- name: Build diffdrive_teleop with colcon
+  ansible.builtin.shell: |
+    set -eo pipefail
+    source /opt/ros/{{ ros_version }}/setup.bash
+    cd {{ diffdrive_teleop_workspace_dir }}
+    colcon build --packages-select diffdrive_teleop --symlink-install
+  args:
+    executable: /bin/bash
+  when: _dt_sync is changed or not _dt_install_stat.stat.exists
+  changed_when: true
+  notify: Restart diffdrive teleop
+
+- name: Deploy the diffdrive teleop systemd unit
+  ansible.builtin.template:
+    src: diffdrive-teleop.service.j2
+    dest: "/etc/systemd/system/{{ diffdrive_teleop_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart diffdrive teleop
+
+- name: Enable and start diffdrive teleop
+  ansible.builtin.systemd:
+    name: "{{ diffdrive_teleop_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

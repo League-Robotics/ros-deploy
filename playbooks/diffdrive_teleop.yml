@@ -1,0 +1,14 @@
+---
+# playbooks/diffdrive_teleop.yml
+# Joystick teleop for differential-drive robots: gamepad -> /cmd_vel.
+# Run: ansible-playbook playbooks/diffdrive_teleop.yml --limit buzzkill
+#
+# Enable a host with `diffdrive_teleop_enabled: true` in its host_vars. Pairs
+# with roles/joy (which publishes the pad) — see docs/wiki/gazebo.md.
+
+- name: Install differential-drive joystick teleop
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: diffdrive_teleop
+      when: diffdrive_teleop_enabled | default(false)

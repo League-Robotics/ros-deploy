@@ -1,0 +1,22 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=Joystick -> Twist teleop for a differential-drive robot (publishes cmd_vel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ diffdrive_teleop_user }}
+# systemd does not read /etc/profile.d, so the ROS environment is set here and
+# the overlays are sourced in ExecStart.
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+{% if ros_static_peers is defined %}
+Environment=ROS_STATIC_PEERS={{ ros_static_peers | join(';') }}
+{% endif %}
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && source {{ diffdrive_teleop_workspace_dir }}/install/setup.bash && exec ros2 run diffdrive_teleop joy_to_twist --ros-args -p joy_topic:={{ diffdrive_teleop_joy_topic }} -p cmd_vel_topic:={{ diffdrive_teleop_cmd_vel_topic }} -p axis_drive:={{ diffdrive_teleop_axis_drive }} -p axis_turn:={{ diffdrive_teleop_axis_turn }} -p invert_drive:={{ diffdrive_teleop_invert_drive | string | lower }} -p invert_turn:={{ diffdrive_teleop_invert_turn | string | lower }} -p max_linear:={{ diffdrive_teleop_max_linear }} -p max_angular:={{ diffdrive_teleop_max_angular }} -p deadzone:={{ diffdrive_teleop_deadzone }} -p enable_button:={{ diffdrive_teleop_enable_button }}'
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

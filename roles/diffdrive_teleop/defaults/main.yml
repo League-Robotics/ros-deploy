@@ -1,0 +1,45 @@
+---
+# roles/diffdrive_teleop/defaults/main.yml
+# Joystick teleop for a DIFFERENTIAL-drive robot: gamepad -> /cmd_vel.
+#
+# Builds the in-repo ros_pkgs/diffdrive_teleop package and runs its joy_to_twist
+# node as a systemd service. Pairs with roles/joy, which publishes the pad as
+# sensor_msgs/Joy, and with whatever consumes /cmd_vel — a real robot driver, or
+# ros_gz_bridge into a Gazebo simulation.
+#
+# Separate from roles/xdrive on purpose: that one drives the holonomic X-drive
+# robot and its node emits linear.y. A differential drive cannot strafe, so it
+# gets its own package rather than a "no strafe" flag inside the other.
+#
+# Enable per host with `diffdrive_teleop_enabled: true`.
+
+diffdrive_teleop_enabled: false
+
+# Same shared colcon overlay the rest of the fleet builds into.
+diffdrive_teleop_workspace_dir: /opt/ros_ws
+diffdrive_teleop_user: "{{ ros_user_name | default('ros') }}"
+diffdrive_teleop_service_name: diffdrive-teleop
+
+# Topics. joy_topic must match the index roles/joy assigned to the pad —
+# check /var/lib/ros-joy/index.map, it is per-controller and sticky.
+diffdrive_teleop_joy_topic: "/{{ inventory_hostname }}/joy/joystick0"
+diffdrive_teleop_cmd_vel_topic: /cmd_vel
+
+# ── Stick mapping ────────────────────────────────────────
+# Single-stick "arcade": one stick both drives and turns.
+# These are NOT portable between pads, or even between modes of one pad. Read
+# the real values off the hardware instead of guessing:
+#   ros2 run diffdrive_teleop joy_probe --ros-args -p joy_topic:=<topic>
+diffdrive_teleop_axis_drive: 1        # stick Y -> linear.x
+diffdrive_teleop_axis_turn: 0         # stick X -> angular.z
+
+# Linux pads usually report negative pushed up/left, while ROS wants +linear.x
+# forward and +angular.z counter-clockwise, so both normally invert. If the
+# robot drives or turns the wrong way, this is the pair to flip.
+diffdrive_teleop_invert_drive: true
+diffdrive_teleop_invert_turn: true
+
+diffdrive_teleop_max_linear: 1.0      # m/s at full stick
+diffdrive_teleop_max_angular: 1.0     # rad/s at full stick
+diffdrive_teleop_deadzone: 0.08
+diffdrive_teleop_enable_button: -1    # -1 = no dead-man button required

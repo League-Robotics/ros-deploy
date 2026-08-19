@@ -1,0 +1,12 @@
+---
+# roles/diffdrive_teleop/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart diffdrive teleop
+  ansible.builtin.systemd:
+    name: "{{ diffdrive_teleop_service_name }}"
+    state: restarted
+    daemon_reload: true
