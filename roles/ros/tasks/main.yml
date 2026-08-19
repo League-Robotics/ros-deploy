@@ -5,8 +5,8 @@
 - name: Validate ros_version
   ansible.builtin.assert:
     that:
-      - ros_version in ['humble', 'kilted']
-    fail_msg: "ros_version must be 'humble' or 'kilted', got: {{ ros_version }}"
+      - ros_version in ['humble', 'kilted', 'lyrical']
+    fail_msg: "ros_version must be 'humble', 'kilted' or 'lyrical', got: {{ ros_version }}"
 
 - name: Include ROS 2 Humble installation tasks
   ansible.builtin.include_tasks: install_humble.yml
@@ -15,6 +15,10 @@
 - name: Include ROS 2 Kilted installation tasks
   ansible.builtin.include_tasks: install_kilted.yml
   when: ros_version == 'kilted'
+
+- name: Include ROS 2 Lyrical installation tasks
+  ansible.builtin.include_tasks: install_lyrical.yml
+  when: ros_version == 'lyrical'
 
 - name: Deploy ROS environment variables profile script
   ansible.builtin.template:
