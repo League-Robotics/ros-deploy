@@ -1,0 +1,117 @@
+---
+# roles/gazebo/defaults/main.yml
+# Gazebo simulation host: the Gazebo simulator itself plus ros_gz, the bridge
+# that carries topics between Gazebo transport and ROS 2. A sim host runs the
+# simulated robot and publishes/subscribes on the same DDS domain (42) as the
+# real fleet, so an unmodified node can be pointed at simulation instead of
+# hardware without knowing the difference.
+#
+# Enable with `install_gazebo: true` in a host's host_vars.
+
+# ── Which Gazebo ─────────────────────────────────────────
+# Gazebo releases are pinned to ROS releases by REP-2000; installing a
+# mismatched pair gives you two copies of the gz libraries and link errors at
+# run time. Derived from ros_version rather than set directly so a host that
+# changes ROS release can't silently keep the wrong simulator.
+#   humble  (22.04) -> Fortress
+#   kilted  (24.04) -> Ionic
+#   lyrical (26.04) -> Jetty    (ros-lyrical-gz-sim-vendor == gz-sim 10.x)
+gazebo_release_by_ros:
+  humble: fortress
+  kilted: ionic
+  lyrical: jetty
+gazebo_release: "{{ gazebo_release_by_ros[ros_version] }}"
+
+# ── Packages ─────────────────────────────────────────────
+# Installed from packages.ros.org as ROS *vendor* packages, NOT from
+# packages.osrfoundation.org. The vendor packages carry the exact Gazebo build
+# the ROS release was tested against, so this is the officially supported pair
+# and needs no second apt repository. Mixing in the OSRF standalone `gz-<release>`
+# packages on top puts a second set of gz libraries on the system — don't.
+#
+#   ros-gz          metapackage: ros_gz_sim, ros_gz_bridge, ros_gz_image,
+#                   ros_gz_interfaces (the actual ROS <-> Gazebo bridge)
+#   gz-sim-vendor   Gazebo Sim itself
+#   gz-tools-vendor the `gz` command-line entrypoint (`gz sim ...`). NOT pulled
+#                   in by ros-gz, so without it the simulator is installed but
+#                   there is no `gz` on PATH.
+gazebo_apt_packages:
+  - "ros-{{ ros_version }}-ros-gz"
+  - "ros-{{ ros_version }}-gz-sim-vendor"
+  - "ros-{{ ros_version }}-gz-tools-vendor"
+
+# Robot-description tooling. A simulated robot is described by a URDF/xacro that
+# gets loaded into Gazebo and published as /robot_description + TF, so these are
+# needed to run essentially any world with a robot in it.
+gazebo_extra_apt_packages:
+  - "ros-{{ ros_version }}-xacro"
+  - "ros-{{ ros_version }}-robot-state-publisher"
+  - "ros-{{ ros_version }}-joint-state-publisher-gui"
+
+# ros2_control + its Gazebo plugin: how a simulated drivetrain gets driven from
+# the same /cmd_vel the real robot listens on. Set false for a bare visualiser.
+gazebo_install_ros2_control: true
+gazebo_ros2_control_packages:
+  - "ros-{{ ros_version }}-ros2-control"
+  - "ros-{{ ros_version }}-ros2-controllers"
+  - "ros-{{ ros_version }}-gz-ros2-control"
+
+# glxinfo / vulkaninfo. Purely diagnostic, but on a box that is driven over VNC
+# they are how you tell GPU rendering from llvmpipe software rendering — which
+# is the difference between a real-time sim and a slideshow.
+gazebo_install_gl_tools: true
+
+# Account to probe the display as. The VNC X server runs with an -auth file
+# (~/.Xauthority) owned by the desktop user, so probing as root gets "No
+# protocol specified / unable to open display" — the renderer check has to run
+# as whoever owns the session.
+gazebo_gl_probe_user: "{{ desktop_user | default(ansible_managed_user | default('ansible')) }}"
+
+# ── Shared world/model assets ────────────────────────────
+# Worlds and models dropped here are found by `gz sim <world>.sdf` from any
+# account, because GZ_SIM_RESOURCE_PATH points at them (see the profile
+# snippets below). Group-writable so the shared `ros` account can add assets
+# without sudo.
+gazebo_assets_dir: /opt/gazebo
+gazebo_assets_group: "{{ ros_user_name | default('ros') }}"
+
+# ── Environment ──────────────────────────────────────────
+# Login-shell environment for Gazebo. Two files because the fleet has two
+# shells in play: bash login shells read /etc/profile.d/*.sh, while the shared
+# `ros` account is zsh and sources /etc/ros/profile.d/*.zsh (see roles/ros_user).
+gazebo_env_profile_path: /etc/profile.d/gazebo_env.sh
+gazebo_env_zsh_path: "{{ ros_user_profiled_dir | default('/etc/ros/profile.d') }}/20-gazebo.zsh"
+
+# ── VirtualGL: GPU rendering inside VNC ──────────────────
+# A VNC session renders OpenGL on the CPU (llvmpipe) even when the box has a
+# GPU, because the X server VNC provides has no card behind it. Gazebo still
+# starts and looks correct, so this is easy to miss — measured on buzzkill's
+# Radeon 680M, glmark2's heavy scenes ran 20 fps software vs 203 fps on the GPU.
+# VirtualGL redirects GL calls to the real card.
+#
+# ON by default for a simulation host: a sim box exists to render, and shipping
+# one that silently software-renders defeats the point. It costs one package and
+# a group membership — the EGL back end below means NO vglserver_config and no
+# display-manager restart. Set false for a sim host with no usable GPU.
+gazebo_install_virtualgl: true
+
+# VirtualGL back end used by the gz-gpu wrapper. "egl0" = first DRM render node
+# (/dev/dri/renderD128); needs no 3D X server, hence no vglserver_config. Keep
+# this in step with desktop_vnc_vgl_display, which does the same job for the
+# session-wide acceleration in roles/desktop.
+gazebo_virtualgl_display: egl0
+
+# ── Tuned demo world ─────────────────────────────────────
+# Gazebo's stock diff_drive.sdf caps its vehicles at max_linear_velocity 0.5 m/s
+# and max_angular_velocity 1 rad/s. Those caps are enforced INSIDE the DiffDrive
+# plugin, so no amount of raising a teleop's max_linear changes anything —
+# measured: commanding 1, 2 and 3 m/s all produced the same ~0.64 m/s.
+#
+# So a driveable copy is derived into the shared worlds dir with the caps
+# raised, leaving the teleop as the thing that actually sets the speed. Derived
+# from the installed vendor world rather than vendored into this repo, so it
+# tracks whatever Gazebo version is installed.
+gazebo_demo_world: true
+gazebo_demo_world_name: fleet_diff_drive.sdf
+gazebo_demo_world_max_linear: 3.0     # ceiling, not the speed you get
+gazebo_demo_world_max_angular: 3.0

@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# {{ gazebo_env_profile_path }}
+# Gazebo {{ gazebo_release | capitalize }} environment for bash login shells on {{ inventory_hostname }}.
+# Managed by Ansible (roles/gazebo) — do not edit by hand.
+#
+# The `gz` command itself comes from the ROS vendor packages under
+# /opt/ros/{{ ros_version }}, so it lands on PATH when ros_env.sh sources the ROS
+# setup. This file only adds the Gazebo-specific variables on top.
+
+# Which Gazebo this host runs. gz_ros2_control and several ROS packages branch
+# on this at build and launch time to pick the matching gz API.
+export GZ_VERSION="{{ gazebo_release }}"
+
+# Where `gz sim <name>.sdf` looks for worlds and models, so simulations can be
+# referenced by name from any directory. Fleet assets live in
+# {{ gazebo_assets_dir }}; anything already in the variable is preserved.
+GZ_FLEET_RESOURCES="{{ gazebo_assets_dir }}/worlds:{{ gazebo_assets_dir }}/models"
+case ":${GZ_SIM_RESOURCE_PATH:-}:" in
+  *":{{ gazebo_assets_dir }}/worlds:"*)
+    # Already present — re-sourcing the profile must not grow the path.
+    ;;
+  "::")
+    export GZ_SIM_RESOURCE_PATH="${GZ_FLEET_RESOURCES}"
+    ;;
+  *)
+    export GZ_SIM_RESOURCE_PATH="${GZ_SIM_RESOURCE_PATH}:${GZ_FLEET_RESOURCES}"
+    ;;
+esac
+unset GZ_FLEET_RESOURCES
+{% if gazebo_install_virtualgl %}
+
+# VirtualGL back end: the DRM render node, so `vglrun <app>` needs no flags and
+# no 3D X server. Inside the VNC session the window manager is already started
+# under vglrun (desktop_vnc_virtualgl), so apps launched from the desktop are
+# accelerated without this; it matters for SSH+X11 and one-off `vglrun` calls.
+export VGL_DISPLAY="{{ gazebo_virtualgl_display }}"
+{% endif %}

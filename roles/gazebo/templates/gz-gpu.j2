@@ -1,0 +1,24 @@
+#!/bin/sh
+# /usr/local/bin/gz-gpu — run a Gazebo command on the GPU.
+# Managed by Ansible (roles/gazebo) — do not edit by hand.
+#
+# Inside the VNC session on {{ inventory_hostname }} this is usually redundant:
+# desktop_vnc_virtualgl starts the window manager under vglrun, so anything
+# launched from the desktop is already accelerated. Use this when that path
+# does not apply — over plain SSH with X11 forwarding, from a systemd unit, or
+# to force acceleration for one command in a session that lacks it.
+#
+#   gz-gpu sim shapes.sdf        ==  vglrun gz sim shapes.sdf
+#
+# VGL_DISPLAY={{ gazebo_virtualgl_display }} selects VirtualGL's EGL back end (the DRM render
+# node), which needs no 3D X server and no vglserver_config.
+
+if [ -n "${TVNC_VGL:-}" ]; then
+  # Already inside a VirtualGL-accelerated session — stacking a second faker
+  # onto the first is not supported, so just run the command.
+  exec gz "$@"
+fi
+
+VGL_DISPLAY="${VGL_DISPLAY:-{{ gazebo_virtualgl_display }}}"
+export VGL_DISPLAY
+exec /opt/VirtualGL/bin/vglrun gz "$@"

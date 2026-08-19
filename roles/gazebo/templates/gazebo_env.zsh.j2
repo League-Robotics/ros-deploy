@@ -1,0 +1,25 @@
+# {{ gazebo_env_zsh_path }}
+# Gazebo {{ gazebo_release | capitalize }} environment for the shared `ros` account on {{ inventory_hostname }}.
+# Sourced by ~ros/.zshrc via the fleet drop-in dir (roles/ros_user).
+# Managed by Ansible (roles/gazebo) — do not edit by hand.
+#
+# Mirrors {{ gazebo_env_profile_path }}, which only bash login shells read. The
+# `gz` command comes from the ROS vendor packages, so it is already on PATH by
+# the time this runs (.zshrc sources the ROS underlay first).
+
+# Which Gazebo this host runs — gz_ros2_control and friends branch on it.
+export GZ_VERSION="{{ gazebo_release }}"
+
+# Fleet worlds/models, so `gz sim <name>.sdf` resolves by name from anywhere.
+# The case guard keeps re-sourcing idempotent (zsh re-reads .zshrc per shell,
+# and the drop-in dir is looped over every time).
+case ":${GZ_SIM_RESOURCE_PATH:-}:" in
+  *":{{ gazebo_assets_dir }}/worlds:"*) ;;
+  "::") export GZ_SIM_RESOURCE_PATH="{{ gazebo_assets_dir }}/worlds:{{ gazebo_assets_dir }}/models" ;;
+  *) export GZ_SIM_RESOURCE_PATH="${GZ_SIM_RESOURCE_PATH}:{{ gazebo_assets_dir }}/worlds:{{ gazebo_assets_dir }}/models" ;;
+esac
+{% if gazebo_install_virtualgl %}
+
+# VirtualGL back end — see the matching note in {{ gazebo_env_profile_path }}.
+export VGL_DISPLAY="{{ gazebo_virtualgl_display }}"
+{% endif %}

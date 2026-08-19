@@ -1,0 +1,14 @@
+---
+# roles/gazebo/handlers/main.yml
+
+# Group membership is read at process start, so a VNC session that was already
+# running when the user was added to `render` still cannot open the GPU. Restart
+# it rather than leaving a desktop that looks fine but silently software-renders.
+- name: Restart VNC for GPU access
+  ansible.builtin.systemd:
+    name: vncserver
+    state: restarted
+    scope: user
+  become: true
+  become_user: "{{ gazebo_gl_probe_user }}"
+  failed_when: false

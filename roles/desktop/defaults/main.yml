@@ -32,3 +32,20 @@ desktop_session: xfce
 # the Ubuntu snap shim, which does not work in VNC sessions. Required so
 # OAuth flows (GitHub sign-in in VS Code, etc.) can open a browser.
 desktop_install_firefox: true
+
+# Run the VNC session under VirtualGL so OpenGL apps render on the real GPU
+# instead of llvmpipe. A VNC X server has no graphics card behind it, so
+# without this every GL app in the session is software-rendered — measured on
+# buzzkill's Radeon 680M, heavy scenes run ~10x slower (glmark2 terrain: 20 fps
+# vs 203 fps). Only worth enabling on a host that HAS a GPU and does 3D work;
+# on a headless utility desktop it just adds a pixel-readback step.
+#
+# Requires VirtualGL installed (roles/gazebo does it) and the desktop_user in
+# the `render` group. Off by default; buzzkill turns it on.
+desktop_vnc_virtualgl: false
+
+# VirtualGL back end. "egl0" = the first DRM render node (/dev/dri/renderD128),
+# which needs no 3D X server and therefore no `vglserver_config`. Use a real
+# display like ":0" only if you deliberately want the GLX back end, which does
+# require vglserver_config plus a display-manager restart.
+desktop_vnc_vgl_display: egl0

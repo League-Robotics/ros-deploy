@@ -183,10 +183,43 @@
     group: "{{ desktop_user }}"
     mode: "0755"
 
+# SECURITY TYPES, and why both branches are explicit:
+#   * macOS Screen Sharing.app will NOT connect to a server offering only RFB
+#     type 1 ("None"). It prompts for a password, and since no password file
+#     exists in that mode, nothing you type can work. So a Mac-reachable host
+#     needs desktop_vnc_no_password: false.
+#   * In the password branch we pin "-SecurityTypes VNC" (RFB type 2) rather
+#     than letting TurboVNC pick its defaults, which advertise Tight-wrapped
+#     types (OTP/UnixLogin/Plain) that Screen Sharing does not negotiate.
+#     Type 2 is the one Apple's client speaks, and it is what lets the password
+#     be saved in the Mac Keychain so it is only ever typed once.
+#
 # NOTE: TurboVNC takes -SecurityTypes None on its own. The
 # --I-KNOW-THIS-IS-INSECURE confirmation flag is TigerVNC-only; TurboVNC's Xvnc
 # rejects it with "Unrecognized option" and the server dies (status=255). Keep
 # that flag in the TigerVNC (aarch64) unit below, but NOT here.
+# TurboVNC's -vgl runs the window manager under `vglrun +wm`, and by default
+# that vglrun uses the GLX back end, i.e. display :0 — which on a headless or
+# console-less box gives "[VGL] ERROR: Could not open display :0" and no
+# acceleration. Pinning the back end HERE, inside the vglrun command line, is
+# what makes it deterministic: passing it via VGL_DISPLAY relies on the variable
+# surviving vncserver -> xstartup -> window manager, and it does not reliably.
+# vncserver `do`es this file as Perl, hence the trailing 1.
+- name: Pin the VirtualGL back end for the VNC session
+  ansible.builtin.copy:
+    dest: /etc/turbovncserver.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (roles/desktop) — do not edit by hand.
+      $vglrun = "vglrun -d {{ desktop_vnc_vgl_display }} +wm";
+      1;
+  when:
+    - ansible_architecture == "x86_64"
+    - desktop_vnc_virtualgl
+  notify: Restart vncserver
+
 - name: Deploy VNC systemd user service (TurboVNC, amd64)
   ansible.builtin.copy:
     dest: "/home/{{ desktop_user }}/.config/systemd/user/vncserver.service"
@@ -200,10 +233,26 @@
 
       [Service]
       Type=forking
+      {% if desktop_vnc_virtualgl %}
+      # GPU acceleration for the whole session. -vgl makes TurboVNC start the
+      # window manager under `vglrun +wm`, so every app launched from the
+      # desktop inherits VirtualGL's LD_PRELOAD — including ones started
+      # indirectly, e.g. `ros2 launch ros_gz_sim ...`. Without this, only
+      # commands a human remembers to prefix with vglrun get the GPU, and
+      # everything else silently falls back to llvmpipe software rendering.
+      #
+      # VGL_DISPLAY=egl0 selects VirtualGL's EGL back end, which renders on the
+      # DRM render node directly. That is what lets us skip `vglserver_config`
+      # and the display-manager restart the GLX back end would require. The
+      # session user must be in the `render` group to open /dev/dri/renderD*.
+      Environment=VGL_DISPLAY={{ desktop_vnc_vgl_display }}
+      Environment=PATH=/opt/VirtualGL/bin:/usr/local/bin:/usr/bin:/bin
+      {% endif %}
       ExecStart=/opt/TurboVNC/bin/vncserver :{{ desktop_vnc_display }} \
         -geometry {{ desktop_vnc_geometry }} \
         -depth {{ desktop_vnc_depth }} \
-        {% if desktop_vnc_no_password %}-SecurityTypes None {% endif %}\
+        {% if desktop_vnc_no_password %}-SecurityTypes None {% else %}-SecurityTypes VNC {% endif %}\
+        {% if desktop_vnc_virtualgl %}-vgl {% endif %}\
         -wm xfce
       ExecStop=/opt/TurboVNC/bin/vncserver -kill :{{ desktop_vnc_display }}
       Restart=on-failure

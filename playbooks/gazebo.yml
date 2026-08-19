@@ -1,0 +1,14 @@
+---
+# playbooks/gazebo.yml
+# Install the Gazebo simulator + the ROS <-> Gazebo bridge on simulation hosts.
+# Run: ansible-playbook playbooks/gazebo.yml --limit buzzkill
+#
+# Enable a host with `install_gazebo: true` in inventory/host_vars/<host>.yml.
+# roles/ros must have run first — the packages come from the ROS apt repo.
+
+- name: Install Gazebo and the ros_gz bridge
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: gazebo
+      when: install_gazebo | default(false)

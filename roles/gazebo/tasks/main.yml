@@ -1,0 +1,196 @@
+---
+# roles/gazebo/tasks/main.yml
+# Installs the Gazebo simulator + the ROS <-> Gazebo bridge on a simulation host.
+# Assumes roles/ros has already run (the packages come from the ROS apt repo
+# that install_<distro>.yml configures).
+
+- name: Assert the ROS release has a known Gazebo pairing
+  ansible.builtin.assert:
+    that:
+      - ros_version in gazebo_release_by_ros
+    fail_msg: >
+      No Gazebo release is mapped to ros_version={{ ros_version }}.
+      Gazebo and ROS are paired by REP-2000; add the pairing to
+      gazebo_release_by_ros in roles/gazebo/defaults/main.yml before deploying.
+    success_msg: "ROS 2 {{ ros_version }} -> Gazebo {{ gazebo_release }}"
+
+- name: Install Gazebo {{ gazebo_release | capitalize }} and the ros_gz bridge
+  ansible.builtin.apt:
+    name: "{{ gazebo_apt_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install robot-description tooling (xacro, robot_state_publisher)
+  ansible.builtin.apt:
+    name: "{{ gazebo_extra_apt_packages }}"
+    state: present
+  when: gazebo_extra_apt_packages | length > 0
+
+- name: Install ros2_control and its Gazebo plugin
+  ansible.builtin.apt:
+    name: "{{ gazebo_ros2_control_packages }}"
+    state: present
+  when: gazebo_install_ros2_control
+
+- name: Install OpenGL/Vulkan diagnostic tools
+  ansible.builtin.apt:
+    name:
+      - mesa-utils         # glxinfo  — what the session renders with
+      - mesa-utils-extra   # eglinfo  — what the GPU offers directly, no X needed
+      - vulkan-tools
+    state: present
+  when: gazebo_install_gl_tools
+
+# ── Shared world/model assets ─────────────────────────────────────────────────
+
+# The assets dir is group-owned by the shared `ros` account so worlds can be
+# added without sudo. On a host where roles/ros_user has not run that group
+# does not exist yet, and hard-failing here would mean playbooks/gazebo.yml
+# could never be run on its own — fall back to root and let ros_user's next
+# run take ownership.
+- name: Check whether the {{ gazebo_assets_group }} group exists
+  ansible.builtin.command: getent group {{ gazebo_assets_group }}
+  register: _gazebo_assets_group_check
+  changed_when: false
+  failed_when: false
+
+- name: Create the shared Gazebo assets directories
+  ansible.builtin.file:
+    path: "{{ gazebo_assets_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: "{{ gazebo_assets_group if _gazebo_assets_group_check.rc == 0 else 'root' }}"
+    # setgid so files added by one account stay group-readable to the others.
+    mode: "2775"
+  loop:
+    - models
+    - worlds
+
+# ── Tuned demo world ──────────────────────────────────────────────────────────
+
+# Derived from the installed vendor world (not vendored into this repo) so it
+# follows the installed Gazebo. Written to a temp file first and then copied, so
+# Ansible reports "changed" only when the content really differs — the sed is
+# deterministic, so re-runs are no-ops.
+- name: Derive a driveable copy of the diff-drive demo world
+  ansible.builtin.shell: |
+    set -eo pipefail
+    src=$(ls -d /opt/ros/{{ ros_version }}/opt/gz_sim_vendor/share/gz/gz-sim*/worlds/diff_drive.sdf | head -1)
+    [ -n "$src" ] || { echo "vendor diff_drive.sdf not found" >&2; exit 1; }
+    sed -e 's|<max_linear_velocity>[^<]*</max_linear_velocity>|<max_linear_velocity>{{ gazebo_demo_world_max_linear }}</max_linear_velocity>|g' \
+        -e 's|<max_angular_velocity>[^<]*</max_angular_velocity>|<max_angular_velocity>{{ gazebo_demo_world_max_angular }}</max_angular_velocity>|g' \
+        "$src" > /tmp/{{ gazebo_demo_world_name }}
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: gazebo_demo_world
+
+- name: Install the tuned world into the shared worlds directory
+  ansible.builtin.copy:
+    src: "/tmp/{{ gazebo_demo_world_name }}"
+    dest: "{{ gazebo_assets_dir }}/worlds/{{ gazebo_demo_world_name }}"
+    remote_src: true
+    owner: root
+    group: "{{ gazebo_assets_group if _gazebo_assets_group_check.rc == 0 else 'root' }}"
+    mode: "0664"
+  when: gazebo_demo_world
+
+# ── Login-shell environment ───────────────────────────────────────────────────
+
+- name: Deploy the Gazebo environment for bash login shells
+  ansible.builtin.template:
+    src: gazebo_env.sh.j2
+    dest: "{{ gazebo_env_profile_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# roles/ros_user sources every *.zsh in this dir from the shared account's
+# .zshrc. Create it here rather than depending on role order, so the gazebo
+# playbook stands alone.
+- name: Ensure the fleet zsh drop-in directory exists
+  ansible.builtin.file:
+    path: "{{ gazebo_env_zsh_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy the Gazebo environment for the shared ros account (zsh)
+  ansible.builtin.template:
+    src: gazebo_env.zsh.j2
+    dest: "{{ gazebo_env_zsh_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# ── Optional GPU acceleration for VNC sessions ────────────────────────────────
+
+- name: Install VirtualGL
+  ansible.builtin.include_tasks: virtualgl.yml
+  when: gazebo_install_virtualgl
+
+# ── Report what the simulator will actually render with ───────────────────────
+
+# Only meaningful once a display exists, and in site.yml this role runs BEFORE
+# roles/desktop creates one. Both guards below are load-bearing:
+#
+#   * the X socket check, because glxinfo against an absent display does NOT
+#     fail fast — it blocks (measured: still hung after 3.5 min, and it survives
+#     the SSH connection closing), which stalls the whole play;
+#   * `timeout`, because a display can also exist but be wedged.
+#
+# So a first-time deploy reports nothing here; the value comes on the next run,
+# once VNC is up. `gz sim` doesn't depend on any of this.
+- name: Check whether the VNC X display exists
+  ansible.builtin.stat:
+    path: "/tmp/.X11-unix/X{{ desktop_vnc_display | default(1) }}"
+  register: _gazebo_x_socket
+  when: gazebo_install_gl_tools
+
+- name: Query the OpenGL renderer on the VNC display
+  ansible.builtin.command: timeout 10 glxinfo -B -display :{{ desktop_vnc_display | default(1) }}
+  become: true
+  become_user: "{{ gazebo_gl_probe_user }}"
+  environment:
+    XAUTHORITY: "/home/{{ gazebo_gl_probe_user }}/.Xauthority"
+  register: _gazebo_glxinfo
+  changed_when: false
+  failed_when: false
+  when:
+    - gazebo_install_gl_tools
+    - _gazebo_x_socket.stat.exists | default(false)
+
+- name: Query the OpenGL renderer through VirtualGL
+  ansible.builtin.command: >-
+    timeout 20 /opt/VirtualGL/bin/vglrun -d {{ gazebo_virtualgl_display }}
+    glxinfo -B -display :{{ desktop_vnc_display | default(1) }}
+  become: true
+  become_user: "{{ gazebo_gl_probe_user }}"
+  environment:
+    XAUTHORITY: "/home/{{ gazebo_gl_probe_user }}/.Xauthority"
+  register: _gazebo_vglinfo
+  changed_when: false
+  failed_when: false
+  when:
+    - gazebo_install_gl_tools
+    - gazebo_install_virtualgl
+    - _gazebo_x_socket.stat.exists | default(false)
+
+# Both numbers, because either alone misleads. The plain probe runs outside the
+# window manager, so it reports llvmpipe even when the session itself IS
+# accelerated (desktop_vnc_virtualgl) — treating that as the answer would be a
+# false alarm. The VirtualGL probe is what an app launched from the desktop
+# actually gets.
+- name: Report what the simulator renders with
+  ansible.builtin.debug:
+    msg:
+      - "unaccelerated : {{ (_gazebo_glxinfo.stdout_lines | default([]) | select('search', 'renderer string') | list | first | default('n/a')) | trim }}"
+      - "via VirtualGL : {{ (_gazebo_vglinfo.stdout_lines | default([]) | select('search', 'renderer string') | list | first | default('n/a — VirtualGL not installed')) | trim }}"
+      - >-
+        {{ 'GPU OK: the VNC session runs the window manager under vglrun, so apps launched from the desktop are accelerated.'
+           if (gazebo_install_virtualgl and desktop_vnc_virtualgl | default(false)
+               and 'llvmpipe' not in (_gazebo_vglinfo.stdout | default('llvmpipe')))
+           else 'SOFTWARE rendering. Set gazebo_install_virtualgl + desktop_vnc_virtualgl, or run via gz-gpu.' }}
+  when: gazebo_install_gl_tools

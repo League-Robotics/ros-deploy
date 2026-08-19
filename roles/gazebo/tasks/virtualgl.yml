@@ -1,0 +1,94 @@
+---
+# roles/gazebo/tasks/virtualgl.yml
+# GPU rendering for OpenGL apps running inside a VNC session.
+#
+# THE PROBLEM: the X server TurboVNC provides has no graphics card behind it,
+# so Mesa falls back to llvmpipe and renders on the CPU. Gazebo still starts and
+# looks right, which is what makes this easy to miss — measured on buzzkill's
+# Radeon 680M, glmark2's heavy scenes ran 20 fps (software) vs 203 fps (GPU).
+#
+# THE FIX: VirtualGL intercepts GL calls via LD_PRELOAD and renders them on the
+# real GPU, then hands the pixels back to the VNC X server.
+#
+# We use VirtualGL's **EGL back end** (VGL_DISPLAY=egl0), which draws straight
+# on the DRM render node. That is the whole reason this role can install and
+# finish unattended: the older GLX back end needs `vglserver_config` plus a
+# display-manager restart, which takes the console down mid-play. EGL needs
+# neither — only that the session user can open /dev/dri/renderD*.
+#
+# Session-wide acceleration is switched on in roles/desktop
+# (desktop_vnc_virtualgl), which adds TurboVNC's -vgl so the window manager
+# itself starts under vglrun and every descendant inherits it.
+
+- name: Assert VirtualGL is being installed on a supported architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture == "x86_64"
+    fail_msg: >
+      gazebo_install_virtualgl is only wired up for amd64 (matching the
+      TurboVNC half of roles/desktop). Detected {{ ansible_architecture }}.
+
+- name: Get the latest VirtualGL release version
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/VirtualGL/virtualgl/releases/latest
+    return_content: true
+    headers:
+      Accept: application/vnd.github.v3+json
+  register: _virtualgl_release
+
+# Check the installed version BEFORE downloading: `apt: deb:` fetches the whole
+# package and only then decides it was already installed (same reasoning as the
+# TurboVNC install in roles/desktop).
+- name: Check the installed VirtualGL version
+  ansible.builtin.command:
+    cmd: dpkg-query -W -f='${Version}' virtualgl
+  register: _virtualgl_installed
+  changed_when: false
+  failed_when: false
+
+- name: Download and install VirtualGL
+  ansible.builtin.apt:
+    deb: "https://github.com/VirtualGL/virtualgl/releases/download/{{ _virtualgl_release.json.tag_name }}/virtualgl_{{ _virtualgl_release.json.tag_name }}_amd64.deb"
+    state: present
+  when: >-
+    (_virtualgl_installed.rc | default(1)) != 0
+    or not (_virtualgl_installed.stdout | default('')).startswith(_virtualgl_release.json.tag_name)
+
+# Without this the EGL back end cannot open the render node and VirtualGL
+# silently falls back to software — the exact failure this file exists to stop.
+# Takes effect for new processes only, so the VNC session must be restarted
+# (handled by the handler below) before an already-running desktop benefits.
+- name: Add {{ gazebo_gl_probe_user }} to the render group (access /dev/dri/renderD*)
+  ansible.builtin.user:
+    name: "{{ gazebo_gl_probe_user }}"
+    groups: render
+    append: true
+  notify: Restart VNC for GPU access
+
+- name: Deploy the gz-gpu wrapper
+  ansible.builtin.template:
+    src: gz-gpu.j2
+    dest: /usr/local/bin/gz-gpu
+    owner: root
+    group: root
+    mode: "0755"
+
+# Proves the GPU is actually reachable through EGL rather than assuming it. Runs
+# against the DRM render node, so it does not need a display and works even on a
+# first deploy before VNC is up.
+- name: Verify the EGL back end reaches the GPU
+  ansible.builtin.command: timeout 20 eglinfo -B
+  register: _gazebo_eglinfo
+  changed_when: false
+  failed_when: false
+
+- name: Report the GPU seen by the EGL back end
+  ansible.builtin.debug:
+    msg: >-
+      {{ (_gazebo_eglinfo.stdout_lines
+          | select('search', 'core profile renderer')
+          | list | first | default('EGL renderer not detected'))
+         | trim }}
+      {{ '-- WARNING: EGL is itself on llvmpipe; VirtualGL will not help. Check the GPU driver.'
+         if 'llvmpipe' in (_gazebo_eglinfo.stdout | default('')) else '' }}
+  when: _gazebo_eglinfo.rc | default(1) == 0
