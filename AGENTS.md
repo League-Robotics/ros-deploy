@@ -28,6 +28,8 @@ playbooks/
   site.yml                   Full deployment (all roles, all groups)
   ros_install.yml            ROS 2 only (physical/VM nodes)
   docker_ros.yml             Docker + ROS container
+  gazebo.yml                 Gazebo + ros_gz on simulation hosts
+  diffdrive_teleop.yml       Joystick teleop for differential-drive robots
   xwindows.yml               X11 forwarding
 roles/
   ansible_user/              Creates ansible OS user + sudoers + authorized_key
@@ -35,10 +37,26 @@ roles/
   ros/                       ROS 2 installation dispatcher
     tasks/install_humble.yml   Ubuntu 22.04, ROS 2 Humble
     tasks/install_kilted.yml   Ubuntu 24.04, ROS 2 Kilted Kaiju
+    tasks/install_lyrical.yml  Ubuntu 26.04, ROS 2 Lyrical Luth
   cameras/                   camera_ros (libcamera) + image transport; one
                              camera_node per camera as a systemd service.
                              On Pi 5/Ubuntu, builds the Raspberry Pi libcamera
                              fork (cameras_build_rpi_libcamera) so the CFE works.
+  gazebo/                    Gazebo simulator + ros_gz (the ROS<->Gazebo topic
+                             bridge) on simulation hosts. Gazebo release is
+                             derived from ros_version via REP-2000 (kilted ->
+                             Ionic, lyrical -> Jetty) and installed as ROS
+                             *vendor* packages from packages.ros.org — do NOT
+                             add the OSRF repo on top. Also installs VirtualGL
+                             so the VNC session renders on the real GPU instead
+                             of llvmpipe (~10x on heavy scenes); see
+                             docs/wiki/gazebo.md.
+  diffdrive_teleop/          Joystick teleop for DIFFERENTIAL-drive robots:
+                             gamepad -> drive (linear.x) + turn (angular.z).
+                             Never emits linear.y — a diff drive cannot strafe.
+                             Deliberately NOT a mode inside roles/xdrive, which
+                             is the holonomic X-drive. Ships joy_probe to read a
+                             pad's real axis indices/signs instead of guessing.
   heartbeat/                 Builds the local ros_pkgs/heartbeat package on nodes
   fleet_packages/            Distributes ROS packages collected from other
                              LeagueRobotics repos (see docs/fleet-packages.md)
@@ -79,10 +97,13 @@ config/                      dotconfig tree (keys, secrets, env files)
 
 | Variable              | Values / Default       | Meaning |
 |-----------------------|------------------------|---------|
-| `ros_version`         | `humble` / `kilted`    | Which ROS 2 release to install |
+| `ros_version`         | `humble`/`kilted`/`lyrical` | Which ROS 2 release (set by the host's Ubuntu) |
 | `ros_package_variant` | `ros-base` / `desktop` | Minimal or full install |
 | `ros_domain_id`       | `42`                   | ROS 2 DDS domain (shared by all nodes) |
 | `configure_xwindows`  | `false`                | Run xwindows role |
+| `install_gazebo`      | `false`                | Run gazebo role (simulation host) |
+| `diffdrive_teleop_enabled` | `false`           | Joystick teleop for a differential drive |
+| `desktop_vnc_virtualgl` | `false`              | Run the VNC session under VirtualGL (GPU, not llvmpipe) |
 | `install_docker`      | `false`                | Run docker role |
 | `ros_in_docker`       | `false`                | Run ros_docker role |
 | `ansible_managed_user`| `ansible`              | Service account name |
@@ -92,13 +113,24 @@ config/                      dotconfig tree (keys, secrets, env files)
 
 ## ROS 2 version matrix
 
-| `ros_version` | ROS release            | Ubuntu | `ros_package_variant` options |
-|---------------|------------------------|--------|-------------------------------|
-| `humble`      | ROS 2 Humble Hawksbill | 22.04  | `ros-base`, `desktop`         |
-| `kilted`      | ROS 2 Kilted Kaiju     | 24.04  | `ros-base`, `desktop`         |
+| `ros_version` | ROS release            | Ubuntu | Gazebo   | `ros_package_variant` options |
+|---------------|------------------------|--------|----------|-------------------------------|
+| `humble`      | ROS 2 Humble Hawksbill | 22.04  | Fortress | `ros-base`, `desktop`         |
+| `kilted`      | ROS 2 Kilted Kaiju     | 24.04  | Ionic    | `ros-base`, `desktop`         |
+| `lyrical`     | ROS 2 Lyrical Luth     | 26.04  | Jetty    | `ros-base`, `desktop`         |
 
-Kilted repo setup uses the `ros2-apt-source` deb package (not the legacy
-apt-key method).  See `roles/ros/tasks/install_kilted.yml`.
+Kilted and Lyrical repo setup uses the `ros2-apt-source` deb package (not the
+legacy apt-key method).  See `roles/ros/tasks/install_kilted.yml` and
+`install_lyrical.yml`.
+
+**The Ubuntu release picks the ROS release — it is not a preference.**
+packages.ros.org builds exactly one ROS distro per Ubuntu suite: `noble`
+carries only `ros-kilted-*`, `resolute` only `ros-lyrical-*`.  So a 26.04 host
+*cannot* join the fleet on Kilted, and the fleet is currently split: the Pis and
+robots run Kilted on 24.04, `buzzkill` runs Lyrical on 26.04.  ROS 2 does not
+guarantee cross-distro communication — stock message types usually interoperate,
+but a changed definition fails to match silently instead of erroring.  Kilted is
+EOL Nov 2026, so the resolution is to move the fleet forward.
 
 ---
 
@@ -131,6 +163,32 @@ ansible-playbook playbooks/bootstrap.yml -u <human_user> --ask-become-pass
 The script auto-detects your personal SSH key (`~/.ssh/id_ed25519` or
 `~/.ssh/id_rsa`) and overrides the `ansible.cfg` service key so the initial
 connection uses your own credentials.
+
+#### Ubuntu 26.04 hosts: bootstrap needs `ansible_become_exe`
+
+26.04 ships **sudo-rs** as the default `sudo`, and it wraps the password prompt:
+
+```
+[sudo: <ansible's prompt>] Password:        # sudo-rs
+<ansible's prompt>                          # classic sudo
+```
+
+Ansible matches the prompt at the *start* of a line, so it never fires and the
+bootstrap dies with `Timeout (12s) waiting for privilege escalation prompt`.
+Classic sudo is still installed alongside it — point become at it for the
+bootstrap run only:
+
+```bash
+ansible-playbook playbooks/bootstrap.yml --limit <host> \
+  -u <your_user> --ask-become-pass \
+  -e target_hosts=<host> -e bootstrap_user=<your_user> \
+  -e ansible_become_exe=/usr/bin/sudo.ws
+```
+
+**This is a bootstrap-only workaround.** Every run after it connects as the
+`ansible` account, which has NOPASSWD sudo, so Ansible passes `-n`, no prompt is
+ever printed, and sudo-rs works fine. Do not put `ansible_become_exe` in
+`host_vars` — it would paper over a broken sudoers file later on.
 
 ---
 

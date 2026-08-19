@@ -37,6 +37,15 @@
   roles:
     - heartbeat
 
+# After ros_user: the shared world/model directory is group-owned by the `ros`
+# account so worlds can be dropped in without sudo.
+- name: Install Gazebo and the ROS <-> Gazebo bridge on simulation hosts
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: gazebo
+      when: install_gazebo | default(false)
+
 # Collect ROS packages from the LeagueRobotics org (repos tagged with the fleet
 # topic + a fleet.yaml manifest) and build the ones targeted at each node. The
 # control machine clones into .fleet/staging and writes .fleet/packages.lock.yml;
@@ -97,6 +106,16 @@
   roles:
     - role: xdrive
       when: (xdrive_run_driver | default(false)) or (xdrive_run_joy_to_twist | default(false))
+
+# Differential-drive joystick teleop (roles/diffdrive_teleop). Separate from the
+# xdrive play above: that one is the holonomic X-drive, this one is two-wheel
+# drive+turn with no strafe. A host runs one or the other, not both.
+- name: Install differential-drive joystick teleop
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: diffdrive_teleop
+      when: diffdrive_teleop_enabled | default(false)
 
 - name: Configure X Windows forwarding
   hosts: ros_all

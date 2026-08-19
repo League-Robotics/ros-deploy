@@ -3,8 +3,13 @@
 # ============================================================
 
 # ── ROS version ──────────────────────────────────────────
-# Supported: humble (ROS 2, Ubuntu 22.04)
+# Supported: humble  (ROS 2, Ubuntu 22.04)
 #            kilted  (ROS 2, Ubuntu 24.04)
+#            lyrical (ROS 2, Ubuntu 26.04)
+#
+# Dictated by the host's Ubuntu release, not chosen: packages.ros.org builds one
+# ROS distro per Ubuntu suite. Override in host_vars for any host that isn't on
+# 24.04 (currently buzzkill, which is 26.04 -> lyrical).
 ros_version: kilted
 
 # ── ROS package variant ──────────────────────────────────
@@ -69,6 +74,14 @@ install_joy: false
 # robot) and xdrive_run_joy_to_twist (Joy -> cmd_vel, on the operator station).
 install_revhub: false
 
+# ── Gazebo simulation ─────────────────────────────────────
+# Whether to install the Gazebo simulator + ros_gz bridge (roles/gazebo). The
+# Gazebo release is derived from ros_version (REP-2000 pairing: kilted ->
+# Ionic), and everything comes from the ROS apt repo as vendor packages. A sim
+# host joins the same DDS domain as the real robots, so a node can be pointed
+# at simulation instead of hardware unchanged. Enabled per host (buzzkill).
+install_gazebo: false
+
 # ── Fleet WiFi ────────────────────────────────────────────
 # Whether to manage the host's WiFi connection (roles/wifi). Keeps the Pis on
 # the shared "Busboom Mesh" SSID so DDS multicast discovery works. The PSK comes
@@ -92,3 +105,7 @@ fleet_collect: true
 # Docker image tags used in docker-compose templates
 ros_humble_image: "ros:humble-ros-base"
 ros_kilted_image: "ros:kilted-ros-base"
+# No docker/lyrical/Dockerfile in this repo yet — the upstream image exists, but
+# roles/ros_docker's _ros_docker_image fact still needs a lyrical branch before
+# ros_in_docker works on a 26.04 host. Add both if a Docker node moves to 26.04.
+ros_lyrical_image: "ros:lyrical-ros-base"

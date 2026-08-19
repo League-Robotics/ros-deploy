@@ -1,0 +1,149 @@
+# inventory/host_vars/buzzkill.yml
+# Per-host overrides for `buzzkill` — the fleet's Gazebo simulation host.
+#
+# An amd64 Ubuntu 26.04 desktop (16 cores, 25 GB RAM, AMD Radeon 680M integrated
+# GPU), added 2026-08-15. Unlike the Pis this is a workstation, not a robot: it
+# carries no hardware of its own (no cameras, no joystick, no REV Hub) and exists
+# to run simulated robots on the same DDS domain as the real ones, so a node can
+# be pointed at simulation instead of hardware without changing anything.
+
+# ── ROS ───────────────────────────────────────────────────
+# LYRICAL, NOT KILTED — and that is forced, not a preference. This host runs
+# Ubuntu 26.04 (Resolute), and packages.ros.org's resolute suite carries only
+# ros-lyrical-*; there is no Kilted build for 26.04, just as there is no Lyrical
+# build for the Pis' 24.04. The fleet is therefore split across two ROS releases.
+#
+# CONSEQUENCE: ROS 2 does not guarantee communication between distros. Standard
+# message types (Twist, Image, Odometry) generally do interoperate, but a topic
+# whose definition changed between Kilted and Lyrical will silently fail to
+# match rather than error. If sim-to-robot topics go quiet, suspect this first —
+# check with `ros2 topic echo` from BOTH sides before debugging anything else.
+# Kilted goes EOL Nov 2026, so the fix is to move the fleet forward, not this
+# host back. See docs/wiki/gazebo.md.
+ros_version: lyrical
+
+# `desktop`, not the fleet's `ros-base` default: this host is driven
+# interactively, so it needs rviz2, rqt and the demo/visualisation packages
+# that a headless robot has no use for.
+ros_package_variant: desktop
+
+# ── Gazebo ────────────────────────────────────────────────
+# Installs Gazebo Jetty (the pairing for Lyrical, derived from ros_version by
+# roles/gazebo — don't set the Gazebo release by hand) plus ros_gz, the bridge
+# that carries topics between Gazebo transport and ROS 2. See docs/wiki/gazebo.md.
+install_gazebo: true
+
+# ── Desktop / VNC ─────────────────────────────────────────
+# Gazebo and rviz need a screen, and this box lives in the rack — so it gets
+# the same XFCE + VNC desktop the Pis run. amd64, so roles/desktop installs
+# TurboVNC (not TigerVNC).
+#   Finder -> Go -> Connect to Server -> vnc://buzzkill:5901
+configure_desktop: true
+
+# Password auth, NOT the amd64 all.yml default of passwordless — same reason the
+# Pis override it. macOS Screen Sharing.app refuses a server that only offers
+# RFB security type "None": it prompts for a password, and in passwordless mode
+# no password file exists, so the prompt can never be satisfied. With a password
+# the server advertises RFB type 2 (VNC auth), which Screen Sharing accepts and
+# can store in the Keychain — so it is typed once, not every connect.
+# Same password as the Pis so there is one credential to remember.
+desktop_vnc_no_password: false
+desktop_vnc_password: code4life
+
+# The shared `ros` account owns the VNC session, so the desktop you connect to
+# already has the ROS 2 and Gazebo environment sourced (roles/ros_user's zsh
+# login + the /etc/ros/profile.d drop-ins). The Pis use `ansible` here because
+# they are headless-ish utility desktops; on the sim host the desktop IS the
+# workspace.
+desktop_user: ros
+
+# GPU acceleration for the whole VNC session. This is the reason the box has a
+# discrete-class GPU at all: a VNC X server has no card behind it, so without
+# this every OpenGL app — Gazebo included — silently renders on the CPU via
+# llvmpipe. MEASURED here 2026-08-15 with glmark2 at 1280x720:
+#
+#   scene              llvmpipe   GPU (VirtualGL/EGL)
+#   refract               40 fps      396 fps   ~10x
+#   terrain               20 fps      203 fps   ~10x
+#   bump (light scene)  1239 fps      905 fps   0.7x  <- readback dominates
+#
+# So light scenes can be FASTER in software (VirtualGL pays a pixel-readback
+# cost), but anything with real geometry and shading — i.e. an actual Gazebo
+# world — is roughly an order of magnitude faster on the GPU.
+#
+# TurboVNC's -vgl starts the window manager under vglrun, so everything launched
+# from the desktop inherits it, including Gazebo started indirectly by
+# `ros2 launch ros_gz_sim ...`. Uses VirtualGL's EGL back end against
+# /dev/dri/renderD128, which needs no vglserver_config and no DM restart.
+desktop_vnc_virtualgl: true
+
+# ── Joystick teleop for the simulator ─────────────────────
+# Plug a gamepad into buzzkill and drive the simulated robot with it:
+#
+#   pad -> roles/joy (joy_linux_node)  -> /buzzkill/joy/joystick0
+#       -> diffdrive_teleop joy_to_twist -> /cmd_vel
+#       -> ros_gz_bridge               -> Gazebo
+#
+# Uses roles/diffdrive_teleop, NOT roles/xdrive. The Gazebo vehicle is a
+# differential drive: two wheels plus a trailing caster, no sideways motion
+# possible. The X-drive teleop publishes linear.y for a holonomic chassis, which
+# is meaningless here, so the two are separate packages rather than one with a
+# mode flag.
+install_joy: true
+diffdrive_teleop_enabled: true
+diffdrive_teleop_cmd_vel_topic: /cmd_vel
+
+# roles/joy assigns a sticky per-controller index in /var/lib/ros-joy/index.map.
+# The F310 briefly held index 1 while a Sipeed NanoKVM-USB dongle was attached
+# (it presents a /dev/input/js* node despite being a mouse, and the udev rule
+# matches KERNEL=="js[0-9]*"). That dongle was removed and the map cleared.
+diffdrive_teleop_joy_topic: /buzzkill/joy/joystick0
+
+# Logitech Gamepad F310, X/D switch at **X** (XInput). PROBED from the device:
+# 8 axes, with axes 2 and 5 resting at -32767 because they are the analog
+# TRIGGERS. Never bind drive or turn to those — a resting trigger reads as full
+# deflection and the robot takes off by itself.
+#     0=LX  1=LY  2=LT  3=RX  4=RY  5=RT  6=DpadX  7=DpadY
+# Single-stick arcade on the LEFT stick: vertical drives, horizontal turns.
+diffdrive_teleop_axis_drive: 1
+diffdrive_teleop_axis_turn: 0
+
+# Signs: NOT inverted, which is the opposite of the usual Linux convention and
+# therefore the opposite of this role's defaults. MEASURED 2026-08-15 by
+# recording every Joy frame while the stick was pushed one way at a time:
+#     stick UP   -> axis 1 peaked +1.00  (never negative)
+#     stick LEFT -> axis 0 peaked +1.00  (never negative)
+# Most pads report NEGATIVE up/left; this one does not. Assuming the convention
+# inverted both controls at once: "up" drove backward (toward the caster) and
+# "left" turned right, which reads as two unrelated faults but is one.
+# Re-measure rather than assume if the pad or its X/D mode ever changes:
+#   ros2 run diffdrive_teleop joy_probe --ros-args -p joy_topic:=/buzzkill/joy/joystick0
+diffdrive_teleop_invert_drive: false
+diffdrive_teleop_invert_turn: false
+
+# Speed at full stick. These are now the REAL limit, but only because
+# roles/gazebo installs a tuned world: stock diff_drive.sdf clamps inside the
+# DiffDrive plugin at 0.5 m/s, and commanding 1, 2 or 3 m/s all measured the
+# same ~0.64 m/s. Against the tuned world (caps raised to 3.0) the commanded
+# value is what you get -- measured 2.0 -> 2.10 m/s.
+# 1.3 m/s is about double the ~0.64 m/s the stock world allowed. Raise it here;
+# there is headroom to 3.0 before the world clamps again.
+diffdrive_teleop_max_linear: 1.3
+diffdrive_teleop_max_angular: 2.0
+diffdrive_teleop_deadzone: 0.08
+
+# ── Not applicable on this host ───────────────────────────
+# Explicit rather than inherited so it is obvious this is a deliberate "no
+# hardware here" rather than an oversight.
+install_cameras: false
+install_revhub: false             # no REV Hub hardware on this host
+# roles/xdrive is the HOLONOMIC X-drive teleop; this host uses
+# roles/diffdrive_teleop above instead. Left explicitly false so the xdrive role
+# is not selected by site.yml.
+xdrive_run_driver: false
+xdrive_run_joy_to_twist: false
+
+# Wired-only workstation on the garage LAN, so the WiFi/wired roles that manage
+# the Pis' dual-homed addressing do not apply.
+configure_wifi: false
+configure_wired: false
