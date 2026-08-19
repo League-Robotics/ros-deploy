@@ -96,6 +96,37 @@
     mode: "0664"
   when: gazebo_demo_world
 
+# Gazebo's tracked_vehicle_simple world welds its four flipper joints shut
+# (<lower>0</lower><upper>0</upper>) and ships no joint controller, so the
+# flippers are rigid contact geometry. This derives a copy with the joints
+# unlocked and a JointPositionController on each, which is what makes them
+# drivable from joint_teleop. Structural XML edits, so a script rather than sed.
+- name: Install the world-derivation script
+  ansible.builtin.copy:
+    src: derive_tracked_world.py
+    dest: /usr/local/lib/derive_tracked_world.py
+    owner: root
+    group: root
+    mode: "0755"
+  when: gazebo_tracked_world
+
+- name: Derive a flipper-actuated copy of the tracked-vehicle world
+  ansible.builtin.command: >-
+    python3 /usr/local/lib/derive_tracked_world.py
+    {{ ros_version }} /tmp/{{ gazebo_tracked_world_name }}
+  changed_when: false
+  when: gazebo_tracked_world
+
+- name: Install the tracked-vehicle world into the shared worlds directory
+  ansible.builtin.copy:
+    src: "/tmp/{{ gazebo_tracked_world_name }}"
+    dest: "{{ gazebo_assets_dir }}/worlds/{{ gazebo_tracked_world_name }}"
+    remote_src: true
+    owner: root
+    group: "{{ gazebo_assets_group if _gazebo_assets_group_check.rc == 0 else 'root' }}"
+    mode: "0664"
+  when: gazebo_tracked_world
+
 # ── Login-shell environment ───────────────────────────────────────────────────
 
 - name: Deploy the Gazebo environment for bash login shells

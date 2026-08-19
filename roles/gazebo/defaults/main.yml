@@ -115,3 +115,11 @@ gazebo_demo_world: true
 gazebo_demo_world_name: fleet_diff_drive.sdf
 gazebo_demo_world_max_linear: 3.0     # ceiling, not the speed you get
 gazebo_demo_world_max_angular: 3.0
+
+# Flipper-actuated copy of Gazebo's tracked_vehicle_simple world. The stock
+# world welds the flipper joints (zero-width limits) and has no joint
+# controller, so the flippers cannot move; the derived copy unlocks them and
+# adds a position controller per flipper, exposing
+#   /model/simple_tracked/flipper/<corner>/cmd_pos
+gazebo_tracked_world: true
+gazebo_tracked_world_name: fleet_tracked_vehicle.sdf
