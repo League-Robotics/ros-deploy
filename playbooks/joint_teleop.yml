@@ -1,0 +1,14 @@
+---
+# playbooks/joint_teleop.yml
+# Joystick control of articulated joints (flippers, arm, gripper) by position.
+# Run: ansible-playbook playbooks/joint_teleop.yml --limit buzzkill
+#
+# Runs alongside a drive teleop — one node drives the chassis, this one moves
+# the joints. Enable with `joint_teleop_enabled: true` in host_vars.
+
+- name: Install joystick joint teleop
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: joint_teleop
+      when: joint_teleop_enabled | default(false)

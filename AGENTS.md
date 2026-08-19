@@ -30,6 +30,7 @@ playbooks/
   docker_ros.yml             Docker + ROS container
   gazebo.yml                 Gazebo + ros_gz on simulation hosts
   diffdrive_teleop.yml       Joystick teleop for differential-drive robots
+  joint_teleop.yml           Joystick control of articulated joints
   xwindows.yml               X11 forwarding
 roles/
   ansible_user/              Creates ansible OS user + sudoers + authorized_key
@@ -57,6 +58,11 @@ roles/
                              Deliberately NOT a mode inside roles/xdrive, which
                              is the holonomic X-drive. Ships joy_probe to read a
                              pad's real axis indices/signs instead of guessing.
+  joint_teleop/              Joystick control of articulated joints by POSITION
+                             (flippers, arm, gripper). Rate-based: hold to move,
+                             release and it stays. Separate from the drive teleop
+                             packages — chassis velocity and joint position fail
+                             differently and want different defaults.
   heartbeat/                 Builds the local ros_pkgs/heartbeat package on nodes
   fleet_packages/            Distributes ROS packages collected from other
                              LeagueRobotics repos (see docs/fleet-packages.md)
@@ -103,6 +109,7 @@ config/                      dotconfig tree (keys, secrets, env files)
 | `configure_xwindows`  | `false`                | Run xwindows role |
 | `install_gazebo`      | `false`                | Run gazebo role (simulation host) |
 | `diffdrive_teleop_enabled` | `false`           | Joystick teleop for a differential drive |
+| `joint_teleop_enabled` | `false`              | Joystick control of articulated joints |
 | `desktop_vnc_virtualgl` | `false`              | Run the VNC session under VirtualGL (GPU, not llvmpipe) |
 | `install_docker`      | `false`                | Run docker role |
 | `ros_in_docker`       | `false`                | Run ros_docker role |

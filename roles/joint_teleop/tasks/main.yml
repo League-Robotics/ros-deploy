@@ -1,0 +1,55 @@
+---
+# roles/joint_teleop/tasks/main.yml
+
+- name: Ensure colcon workspace src/ directory exists
+  ansible.builtin.file:
+    path: "{{ joint_teleop_workspace_dir }}/src"
+    state: directory
+    owner: "{{ joint_teleop_user }}"
+    group: "{{ joint_teleop_user }}"
+    mode: "0755"
+
+- name: Sync joint_teleop package sources into the workspace
+  ansible.builtin.synchronize:
+    src: "{{ playbook_dir }}/../ros_pkgs/joint_teleop/"
+    dest: "{{ joint_teleop_workspace_dir }}/src/joint_teleop/"
+    delete: true
+    rsync_opts:
+      - "--exclude=__pycache__"
+      - "--exclude=.pytest_cache"
+  register: _jt_sync
+
+- name: Check whether joint_teleop install artifacts already exist
+  ansible.builtin.stat:
+    path: "{{ joint_teleop_workspace_dir }}/install/joint_teleop"
+  register: _jt_install_stat
+
+- name: Build joint_teleop with colcon
+  ansible.builtin.shell: |
+    set -eo pipefail
+    source /opt/ros/{{ ros_version }}/setup.bash
+    cd {{ joint_teleop_workspace_dir }}
+    colcon build --packages-select joint_teleop --symlink-install
+  args:
+    executable: /bin/bash
+  when: _jt_sync is changed or not _jt_install_stat.stat.exists
+  changed_when: true
+  notify: Restart joint teleop
+
+- name: Deploy the joint teleop systemd unit
+  ansible.builtin.template:
+    src: joint-teleop.service.j2
+    dest: "/etc/systemd/system/{{ joint_teleop_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart joint teleop
+
+- name: Enable and start joint teleop
+  ansible.builtin.systemd:
+    name: "{{ joint_teleop_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

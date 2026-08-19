@@ -1,0 +1,35 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=Joystick -> joint position teleop ({{ joint_teleop_joints | map(attribute='name') | join(', ') }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ joint_teleop_user }}
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+{% if ros_static_peers is defined %}
+Environment=ROS_STATIC_PEERS={{ ros_static_peers | join(';') }}
+{% endif %}
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && source {{ joint_teleop_workspace_dir }}/install/setup.bash && exec ros2 run joint_teleop joy_to_joints --ros-args \
+  -p joy_topic:={{ joint_teleop_joy_topic }} \
+  -p rate:={{ joint_teleop_rate }} \
+  -p deadzone:={{ joint_teleop_deadzone }} \
+  -p min_angle:={{ joint_teleop_min_angle }} \
+  -p max_angle:={{ joint_teleop_max_angle }} \
+  -p publish_hz:={{ joint_teleop_publish_hz }} \
+  -p home_button:={{ joint_teleop_home_button }} \
+  -p "joints:=[{{ joint_teleop_joints | map(attribute="name") | join(",") }}]" \
+{% for j in joint_teleop_joints %}
+  -p {{ j.name }}.topic:={{ j.topic }} \
+  -p {{ j.name }}.axis:={{ j.axis }} \
+  -p {{ j.name }}.invert:={{ (j.invert | default(false)) | string | lower }} \
+  -p {{ j.name }}.scale:={{ j.scale | default(1.0) }} \
+{% endfor %}
+  '
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

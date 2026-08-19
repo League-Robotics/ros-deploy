@@ -147,3 +147,38 @@ xdrive_run_joy_to_twist: false
 # the Pis' dual-homed addressing do not apply.
 configure_wifi: false
 configure_wired: false
+
+# ── Flipper teleop (tracked-vehicle sim) ──────────────────
+# The Gazebo tracked vehicle has four articulated flippers, one per corner.
+# roles/gazebo derives a copy of the world with the flipper joints unlocked and
+# a position controller on each (the stock world welds them shut), exposing
+#   /model/simple_tracked/flipper/<corner>/cmd_pos
+#
+# D-pad on the F310 (XInput): axis 7 = up/down, axis 6 = left/right.
+#   D-pad up/down    -> both FRONT flippers
+#   D-pad left/right -> both REAR flippers
+# The D-pad is chosen over the triggers deliberately: axes 2 and 5 are the
+# analog triggers and rest at full deflection, which would drive a flipper to
+# its limit the moment the node starts.
+#
+# Control is rate-based — hold to move, release and the flipper stays put.
+# Button 3 (Y) returns all four to level.
+joint_teleop_enabled: true
+joint_teleop_joy_topic: /buzzkill/joy/joystick0
+joint_teleop_rate: 0.8
+joint_teleop_min_angle: -1.2
+joint_teleop_max_angle: 1.2
+joint_teleop_home_button: 3
+joint_teleop_joints:
+  - name: front_left
+    topic: /model/simple_tracked/flipper/front_left/cmd_pos
+    axis: 7
+  - name: front_right
+    topic: /model/simple_tracked/flipper/front_right/cmd_pos
+    axis: 7
+  - name: rear_left
+    topic: /model/simple_tracked/flipper/rear_left/cmd_pos
+    axis: 6
+  - name: rear_right
+    topic: /model/simple_tracked/flipper/rear_right/cmd_pos
+    axis: 6

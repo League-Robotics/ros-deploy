@@ -1,0 +1,27 @@
+---
+# roles/joint_teleop/defaults/main.yml
+# Joystick control of articulated joints by position (ros_pkgs/joint_teleop).
+# Runs alongside a drive teleop: one node drives the chassis, this one moves
+# flippers / arm / gripper. Enable per host with joint_teleop_enabled: true.
+
+joint_teleop_enabled: false
+
+joint_teleop_workspace_dir: /opt/ros_ws
+joint_teleop_user: "{{ ros_user_name | default('ros') }}"
+joint_teleop_service_name: joint-teleop
+
+joint_teleop_joy_topic: "/{{ inventory_hostname }}/joy/joystick0"
+
+# Rate-based control: a held control moves the target at this many rad/s and it
+# stays where released.
+joint_teleop_rate: 0.8
+joint_teleop_deadzone: 0.5      # D-pad axes are -1/0/+1, so a wide deadzone
+joint_teleop_min_angle: -1.2
+joint_teleop_max_angle: 1.2
+joint_teleop_publish_hz: 20.0
+joint_teleop_home_button: -1    # button that returns every joint to 0; -1 = none
+
+# Joints to drive. Each entry needs: name, topic, axis; optional invert, scale.
+# `scale: -1.0` mirrors a joint mounted the opposite way so one axis moves a
+# left/right pair together.
+joint_teleop_joints: []

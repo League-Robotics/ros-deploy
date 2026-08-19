@@ -152,6 +152,39 @@ Push one control at a time; it prints the axis index and sign to put in
 axis rests at full deflection — those are the analog **triggers**, and binding
 drive or turn to one makes the robot take off the instant the node starts.
 
+### Flippers on the tracked vehicle
+
+`tracked_vehicle_simple.sdf` has four articulated flippers, but in the **stock**
+world they cannot move: the joints are welded (`<lower>0</lower><upper>0</upper>`)
+and there is no joint controller — they exist as rigid contact geometry for the
+tracked-vehicle plugin. `roles/gazebo` therefore derives
+`/opt/gazebo/worlds/fleet_tracked_vehicle.sdf` with the joints unlocked
+(+/-1.2 rad) and a `JointPositionController` on each, exposing:
+
+```
+/model/simple_tracked/flipper/{front_left,front_right,rear_left,rear_right}/cmd_pos
+```
+
+`joint_teleop` drives those from the pad. Control is **rate-based** — hold to
+move, release and the flipper stays put — because mapping an axis straight to an
+angle would snap the joints somewhere the instant the node starts, and would
+send a resting-at-full-deflection axis (an analog trigger) straight to its limit.
+
+| control | effect |
+|---------|--------|
+| D-pad up / down | both FRONT flippers |
+| D-pad left / right | both REAR flippers |
+| button Y | return all four to level |
+
+The D-pad is used rather than the triggers on purpose: axes 2 and 5 on an F310
+are the analog triggers and rest at full deflection.
+
+Bridge the flipper topics one-way alongside `cmd_vel`:
+
+```
+/model/simple_tracked/flipper/front_left/cmd_pos@std_msgs/msg/Float64]gz.msgs.Double
+```
+
 ### Speed lives in the world, not the teleop
 
 Stock `diff_drive.sdf` clamps inside the DiffDrive plugin at

@@ -117,6 +117,15 @@
     - role: diffdrive_teleop
       when: diffdrive_teleop_enabled | default(false)
 
+# Joint teleop runs alongside a drive teleop: the drive node owns cmd_vel, this
+# one owns the articulated joints (robot flippers, arm, gripper).
+- name: Install joystick joint teleop
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: joint_teleop
+      when: joint_teleop_enabled | default(false)
+
 - name: Configure X Windows forwarding
   hosts: ros_all
   become: true

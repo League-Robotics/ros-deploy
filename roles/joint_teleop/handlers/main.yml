@@ -1,0 +1,10 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart joint teleop
+  ansible.builtin.systemd:
+    name: "{{ joint_teleop_service_name }}"
+    state: restarted
+    daemon_reload: true
