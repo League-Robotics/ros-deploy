@@ -20,6 +20,25 @@ drives any number of them:
     front_left.axis:        7        # joystick axis that moves it
     front_left.invert:      false
     front_left.scale:       1.0      # flip to -1.0 to mirror a paired joint
+    front_left.min_angle:   -0.5     # per-joint limits; omit to use the
+    front_left.max_angle:    0.5     # node-wide min_angle/max_angle
+
+Per-joint limits exist because unrelated mechanisms rarely share a range: a
+turret sweeps [0, 2pi] while the hood beside it moves 0.4 rad, and clamping
+both to one global window would pin one of them.
+
+A joint may instead be a VELOCITY joint — a spinner (flywheel, roller) whose
+topic takes rad/s, not an angle:
+
+    joints:            ['flywheel']
+    flywheel.topic:    /model/robot/flywheel/cmd_vel
+    flywheel.mode:     velocity
+    flywheel.button:   5             # held -> spin at `speed`, released -> 0
+    flywheel.speed:    200.0
+
+While the button is held the speed is published continuously; on release a
+single 0 is sent and the topic then goes quiet (same yield-the-topic shape as
+the drive teleops). The home button stops velocity joints too.
 
 Axis indices and signs are not portable between pads; read them off the
 hardware with `ros2 run diffdrive_teleop joy_probe`.
@@ -49,12 +68,28 @@ class JoyToJoints(Node):
             self.declare_parameter(f'{n}.axis', -1)
             self.declare_parameter(f'{n}.invert', False)
             self.declare_parameter(f'{n}.scale', 1.0)
+            self.declare_parameter(f'{n}.mode', 'position')
+            self.declare_parameter(f'{n}.button', -1)
+            self.declare_parameter(f'{n}.speed', 0.0)
+            # Per-joint limits default to the node-wide ones, so existing
+            # single-mechanism configs (the flippers) keep meaning what they
+            # meant before these parameters existed.
+            self.declare_parameter(f'{n}.min_angle',
+                                   self.get_parameter('min_angle').value)
+            self.declare_parameter(f'{n}.max_angle',
+                                   self.get_parameter('max_angle').value)
             self._joints.append({
                 'name': n,
                 'axis': self.get_parameter(f'{n}.axis').value,
                 'invert': self.get_parameter(f'{n}.invert').value,
                 'scale': self.get_parameter(f'{n}.scale').value,
+                'mode': self.get_parameter(f'{n}.mode').value,
+                'button': self.get_parameter(f'{n}.button').value,
+                'speed': self.get_parameter(f'{n}.speed').value,
+                'lo': self.get_parameter(f'{n}.min_angle').value,
+                'hi': self.get_parameter(f'{n}.max_angle').value,
                 'target': 0.0,
+                'running': False,
                 'pub': self.create_publisher(
                     Float64, self.get_parameter(f'{n}.topic').value, 10),
             })
@@ -86,10 +121,19 @@ class JoyToJoints(Node):
 
         dz = self.get_parameter('deadzone').value
         rate = self.get_parameter('rate').value
-        lo = self.get_parameter('min_angle').value
-        hi = self.get_parameter('max_angle').value
 
         for j in self._joints:
+            if j['mode'] == 'velocity':
+                b = j['button']
+                held = (not home and 0 <= b < len(self._buttons)
+                        and self._buttons[b] == 1)
+                if held:
+                    j['pub'].publish(Float64(data=float(j['speed'])))
+                    j['running'] = True
+                elif j['running']:
+                    j['pub'].publish(Float64(data=0.0))   # one stop, then quiet
+                    j['running'] = False
+                continue
             if home:
                 j['target'] = 0.0
             else:
@@ -99,7 +143,7 @@ class JoyToJoints(Node):
                     if j['invert']:
                         v = -v
                     j['target'] += v * j['scale'] * rate * self._dt
-                    j['target'] = max(lo, min(hi, j['target']))
+                    j['target'] = max(j['lo'], min(j['hi'], j['target']))
             m = Float64()
             m.data = float(j['target'])
             j['pub'].publish(m)

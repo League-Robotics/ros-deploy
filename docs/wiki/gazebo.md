@@ -60,6 +60,176 @@ ros2 topic list | grep cmd_vel
 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}"
 ```
 
+## Sending buzzkill a new robot
+
+You do not need to sit at the VNC desktop to put a robot in the simulator, and
+you do not need to restart the simulator to add one. Copy the model over, then
+spawn it into the world that is already running.
+
+### 1. Copy the model over
+
+A Gazebo model is a directory — `model.config`, `model.sdf`, `meshes/`. Drop it
+in `/opt/gazebo/models` and it becomes addressable everywhere as
+`model://<name>`, because that directory is on `GZ_SIM_RESOURCE_PATH`:
+
+```bash
+# 43 MB of models moves in a few seconds on the LAN
+tar czf - my_robot | ssh ros@buzzkill 'tar xzf - -C /opt/gazebo/models'
+```
+
+`/opt/gazebo/models` is grouped into tier directories (`1-drives`,
+`2-needs-plugin`, …) — drop a new model straight into `/opt/gazebo/models` and
+it still resolves, because that directory is on the path too. Filing it under a
+tier is a judgement about the model, not a requirement.
+
+`scp -r my_robot ros@buzzkill:/opt/gazebo/models/` does the same thing and is
+easier to remember; `tar` is worth it once the meshes get big. The directory is
+group-owned by `ros` and group-writable, so the shared account needs **no
+sudo** — see [connecting](fleet-portal.md) for the credentials.
+
+> **Copying from a Mac, use `tar --disable-copyfile` or `COPYFILE_DISABLE=1`.**
+> Otherwise macOS writes an AppleDouble `._model.config` beside every real file,
+> and Gazebo's model-database scan tries to parse them as models.
+
+Models already installed on `buzzkill` are catalogued in
+[Robot Models for the Simulator](gazebo-models.md) — start there, because most
+of them load without being drivable and the page says which is which.
+
+### 2. Spawn it into the running world
+
+`ros_gz_sim create` injects a model into a live simulation. The robot appears
+immediately; nothing restarts, and anything already running keeps running:
+
+```bash
+ssh ros@buzzkill
+ros2 run ros_gz_sim create \
+  -world fleet \
+  -file /opt/gazebo/models/1-drives/romi/model.sdf \
+  -name romi -x 0 -y 0 -z 0.15
+# [INFO] [ros_gz_sim]: Entity creation successful.
+```
+
+> **Pick the model from `1-drives`.** Anything in `2-needs-plugin` spawns just
+> as happily and then sits there for good — it has no drivetrain, so the command
+> topic below does not exist and there is nothing to bridge. See
+> [Robot Models for the Simulator](gazebo-models.md).
+
+> **Do not wrap the include in an outer `<model>`.** Spawning a file that nests
+> `<include><uri>model://romi</uri></include>` inside another `<model>` re-scopes
+> the drive plugin's topic, so the robot arrives and is then unreachable.
+> Spawn the model's own `model.sdf`.
+
+`-world` is the name **inside** the world SDF, not the filename —
+`fleet_diff_drive.sdf` contains `<world name="diff_drive">` and
+`fleet_tracked_vehicle.sdf` contains `<world name="default">`. Getting it wrong
+fails silently-ish: the service simply is not there to call.
+
+`-file` takes any path, so a one-off model does not have to be installed at all.
+There is also `-string` (SDF as text, no file anywhere) and `-topic`. Confirm
+what landed with `gz model --list`.
+
+> **The world must include the `UserCommands` system**, or `/world/<name>/create`
+> does not exist and there is nothing to spawn into. `/opt/gazebo/worlds/fleet_empty.sdf`
+> is a bare ground-plane world that has it, for exactly this.
+
+### 3. Drive it
+
+> **`buzzkill` now runs a persistent bridge** — `gz-bridge.service`
+> (roles/gz_bridge) carries the fleet's standard sim topics across the ROS/gz
+> boundary at boot: every `/model/patribots/...` command topic, the tracked
+> vehicle's four flipper topics, and patribots odometry back out. If your topic
+> is on that list (see `gz_bridge_topics` in `host_vars/buzzkill.yml`), skip
+> the manual bridge below — it is already running. The hand-run bridge remains
+> the right tool for ad-hoc topics like a freshly spawned romi's `/cmd_vel`.
+>
+> The **patribots swerve robot** is the fully wired example: spawn it and it
+> drives from `/sim/swerve/cmd_vel` (left stick + right-stick strafe on the
+> F310) with no further setup — the chain is
+> `motion-control.service -> swerve-drive.service -> gz-bridge.service`.
+> See [Robot Models for the Simulator](gazebo-models.md#patribots--the-swerve-robot-frc-4738).
+
+Bridge the model's command topic into ROS, then it is an ordinary fleet node:
+
+```bash
+# romi's DiffDrive plugin declares <topic>/cmd_vel</topic>, so that is the name
+# to bridge. ] = ROS -> Gazebo only; a bidirectional @ makes the bridge a second
+# publisher on the topic and echoes your commands back at you.
+ros2 run ros_gz_bridge parameter_bridge \
+  /cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist &
+
+ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}}"
+```
+
+Measured end to end on 2026-08-19 — copied in, spawned into a running world,
+driven from ROS — the robot went from `x = 0.0` to `x = 3.57` in eight seconds
+at a commanded 0.5 m/s.
+
+Note that `diffdrive-teleop.service` also publishes on `/cmd_vel` (that is the
+joystick path). With the stick centred the two coexist, but a deflected stick
+and a scripted `topic pub` will fight. Remap the bridge's ROS side if you want
+scripted driving to have the topic to itself:
+
+```bash
+ros2 run ros_gz_bridge parameter_bridge \
+  /cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist \
+  --ros-args -r /cmd_vel:=/sim/cmd_vel      # then publish to /sim/cmd_vel
+```
+
+### `gz sim` is a wrapper — check for stale servers first
+
+**This is the one that will waste your afternoon.** `gz sim` is a launcher; the
+process that actually runs the world is `gz-sim-main`. So this kills nothing:
+
+```bash
+pkill -f "gz sim"        # matches the wrapper, not the server. Useless.
+```
+
+Every "restart", the old server survives and a new one joins it. They all
+advertise the *same* gz-transport topics and services, so `gz model --list`,
+pose queries and spawns are answered by whichever replies first — spawns land in
+one world while you read poses from another. It presents as a robot that spawns
+successfully and then will not move, or a `-name` that comes back different.
+
+Count them before believing anything:
+
+```bash
+pgrep -af gz-sim-main
+```
+
+Kill by the real binary, and narrow the pattern to your own world so you do not
+take out someone else's session:
+
+```bash
+pkill -f 'gz-sim-main.*fleet_empty'
+```
+
+Two more traps in the same family: over SSH, `pkill -f "gz sim"` also matches the
+SSH shell's own command line and kills your session before it reaches Gazebo —
+put the pattern in a script file instead. And a Python `Popen(["gz","sim",...])`
+*is* safe to `terminate()`, because the wrapper execs and the PID you hold is
+the real server.
+
+The command topic is whatever the model's drive plugin declares, and it varies:
+several models in the collection listen on bare `/cmd_vel`, which means two of
+them in one world are driven by a single teleop. Check before you spawn a
+second robot:
+
+```bash
+gz topic -l | grep cmd_vel
+```
+
+### Watching it
+
+The sim above runs headless (`gz sim -s`). To actually see it, connect to
+`vnc://buzzkill:5901` and attach the GUI to the running server:
+
+```bash
+gz sim -g          # GUI only, joins the server already running
+```
+
+Started this way the GUI inherits the desktop's VirtualGL acceleration, which is
+the whole reason the box has a GPU — see [Rendering](#rendering-gpu-and-how-to-tell).
+
 ## Rendering: GPU, and how to tell
 
 `buzzkill` renders on its **AMD Radeon 680M**, and that is not automatic — it is
@@ -275,6 +445,8 @@ which carry the exact Gazebo build the ROS release was tested against.
 
 ## See also
 
+- **[Robot Models for the Simulator](gazebo-models.md)** — the 30 models installed
+  on `buzzkill`, triaged by whether they actually drive.
 - **[Using the rosbridge Gateway](rosbridge.md)** — `buzzkill` is one; watch sim topics from a browser.
 - **[Setting Up a New Node](new-node.md)** — how `buzzkill` was onboarded.
 - [Gazebo Ionic documentation](https://gazebosim.org/docs/ionic/) and

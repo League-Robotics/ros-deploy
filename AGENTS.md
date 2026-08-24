@@ -63,6 +63,19 @@ roles/
                              release and it stays. Separate from the drive teleop
                              packages — chassis velocity and joint position fail
                              differently and want different defaults.
+  swerve_drive/              Twist -> swerve-module mixing for SIMULATED swerve
+                             robots (ros_pkgs/swerve_drive): one body-frame
+                             Twist in, a steer position + wheel velocity per
+                             corner out, nearest-branch flip optimisation.
+                             Module geometry is host_vars data (see the
+                             patribots model's UPSTREAM.md in urdf-collection).
+                             Twist source: revhub's motion_control (holonomic).
+  gz_bridge/                 Persistent ros_gz parameter_bridge as a systemd
+                             unit, topics listed in host_vars. Runs as the
+                             shared ros user ON PURPOSE: gz-transport's default
+                             partition is <host>:<user>, so a bridge under any
+                             other account silently cannot see the desktop
+                             session's simulator.
   heartbeat/                 Builds the local ros_pkgs/heartbeat package on nodes
   fleet_packages/            Distributes ROS packages collected from other
                              LeagueRobotics repos (see docs/fleet-packages.md)
@@ -110,6 +123,8 @@ config/                      dotconfig tree (keys, secrets, env files)
 | `install_gazebo`      | `false`                | Run gazebo role (simulation host) |
 | `diffdrive_teleop_enabled` | `false`           | Joystick teleop for a differential drive |
 | `joint_teleop_enabled` | `false`              | Joystick control of articulated joints |
+| `swerve_drive_enabled` | `false`              | Twist -> swerve mixing for a simulated swerve robot |
+| `gz_bridge_enabled`    | `false`              | Persistent ROS <-> Gazebo topic bridge (sim hosts) |
 | `desktop_vnc_virtualgl` | `false`              | Run the VNC session under VirtualGL (GPU, not llvmpipe) |
 | `install_docker`      | `false`                | Run docker role |
 | `ros_in_docker`       | `false`                | Run ros_docker role |

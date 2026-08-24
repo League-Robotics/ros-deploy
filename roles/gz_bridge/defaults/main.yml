@@ -1,0 +1,28 @@
+---
+# roles/gz_bridge/defaults/main.yml
+# A persistent ros_gz_bridge (parameter_bridge) on a simulation host, carrying
+# a fixed list of topics between ROS 2 and Gazebo transport. Before this role
+# the bridge was run by hand over SSH (see docs/wiki/gazebo.md), which meant
+# every teleop chain silently dead-ended at the ROS/gz boundary after a reboot.
+#
+# The unit runs as the shared `ros` account. That is load-bearing, not a
+# convenience: gz-transport partitions the graph, and the bridge must sit in
+# the SAME partition as the simulator started from the VNC desktop (also the
+# `ros` account). Topics for models that are not currently spawned are
+# harmless — the bridge just idles on them.
+#
+# Enable per host with gz_bridge_enabled: true.
+
+gz_bridge_enabled: false
+
+gz_bridge_user: "{{ ros_user_name | default('ros') }}"
+gz_bridge_service_name: gz-bridge
+
+# Topics to bridge. Each entry:
+#   topic:     the name on BOTH sides (parameter_bridge uses one name)
+#   ros_type:  e.g. std_msgs/msg/Float64
+#   gz_type:   e.g. gz.msgs.Double
+#   direction: "]" ROS -> gz (commands), "[" gz -> ROS (telemetry), "@" both.
+#              Prefer one-way: an @ bridge is a second publisher on the topic
+#              and echoes commands back at their sender (docs/wiki/gazebo.md).
+gz_bridge_topics: []

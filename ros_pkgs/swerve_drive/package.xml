@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>swerve_drive</name>
+  <version>0.1.0</version>
+  <description>
+    Twist -> swerve-module mixing for simulated swerve robots: one body-frame
+    geometry_msgs/Twist in, a position command per steer joint and a velocity
+    command per drive wheel out, with the standard nearest-branch flip
+    optimisation. The module geometry (positions, zero-steer headings, topics)
+    is all parameters, so any swerve model works. This is a drive MIXER, not a
+    teleop: pair it with a Twist source (revhub's motion_control for holonomic
+    joystick driving) and ros_gz_bridge to reach the simulator.
+  </description>
+  <maintainer email="eric.busboom@jointheleague.org">Eric Busboom</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -1,0 +1,32 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=Twist -> swerve-module mixing ({{ swerve_drive_modules | map(attribute='name') | join(', ') }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ swerve_drive_user }}
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+{% if ros_static_peers is defined %}
+Environment=ROS_STATIC_PEERS={{ ros_static_peers | join(';') }}
+{% endif %}
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && source {{ swerve_drive_workspace_dir }}/install/setup.bash && exec ros2 run swerve_drive twist_to_swerve --ros-args \
+  -p cmd_vel_topic:={{ swerve_drive_cmd_vel_topic }} \
+  -p wheel_radius:={{ swerve_drive_wheel_radius }} \
+  -p command_timeout_s:={{ swerve_drive_command_timeout_s }} \
+  -p "modules:=[{{ swerve_drive_modules | map(attribute="name") | join(",") }}]" \
+{% for m in swerve_drive_modules %}
+  -p {{ m.name }}.x:={{ m.x }} \
+  -p {{ m.name }}.y:={{ m.y }} \
+  -p {{ m.name }}.phi0_deg:={{ m.phi0_deg }} \
+  -p {{ m.name }}.steer_topic:={{ m.steer_topic }} \
+  -p {{ m.name }}.drive_topic:={{ m.drive_topic }} \
+{% endfor %}
+  '
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

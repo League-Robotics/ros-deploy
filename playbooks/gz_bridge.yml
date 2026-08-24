@@ -1,0 +1,15 @@
+---
+# playbooks/gz_bridge.yml
+# Persistent ROS <-> Gazebo topic bridge on a simulation host.
+# Run: ansible-playbook playbooks/gz_bridge.yml --limit buzzkill
+#
+# Enable with `gz_bridge_enabled: true` + a `gz_bridge_topics` list in
+# host_vars. Runs as the shared ros account so it shares the desktop
+# simulator's gz-transport partition.
+
+- name: Install the ROS <-> Gazebo topic bridge
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: gz_bridge
+      when: gz_bridge_enabled | default(false)

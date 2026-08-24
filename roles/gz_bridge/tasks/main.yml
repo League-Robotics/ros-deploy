@@ -1,0 +1,28 @@
+---
+# roles/gz_bridge/tasks/main.yml
+
+- name: Assert the bridge has topics to carry
+  ansible.builtin.assert:
+    that:
+      - gz_bridge_topics | length > 0
+    fail_msg: >
+      gz_bridge_enabled is true but gz_bridge_topics is empty — the bridge
+      would start with nothing to do. List the topics in host_vars.
+
+- name: Deploy the gz bridge systemd unit
+  ansible.builtin.template:
+    src: gz-bridge.service.j2
+    dest: "/etc/systemd/system/{{ gz_bridge_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart gz bridge
+
+- name: Enable and start the gz bridge
+  ansible.builtin.systemd:
+    name: "{{ gz_bridge_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

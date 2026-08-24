@@ -23,9 +23,20 @@ ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && source {
   -p "joints:=[{{ joint_teleop_joints | map(attribute="name") | join(",") }}]" \
 {% for j in joint_teleop_joints %}
   -p {{ j.name }}.topic:={{ j.topic }} \
-  -p {{ j.name }}.axis:={{ j.axis }} \
+  -p {{ j.name }}.axis:={{ j.axis | default(-1) }} \
   -p {{ j.name }}.invert:={{ (j.invert | default(false)) | string | lower }} \
   -p {{ j.name }}.scale:={{ j.scale | default(1.0) }} \
+{% if j.mode is defined %}
+  -p {{ j.name }}.mode:={{ j.mode }} \
+  -p {{ j.name }}.button:={{ j.button | default(-1) }} \
+  -p {{ j.name }}.speed:={{ j.speed | default(0.0) }} \
+{% endif %}
+{% if j.min_angle is defined %}
+  -p {{ j.name }}.min_angle:={{ j.min_angle }} \
+{% endif %}
+{% if j.max_angle is defined %}
+  -p {{ j.name }}.max_angle:={{ j.max_angle }} \
+{% endif %}
 {% endfor %}
   '
 Restart=on-failure

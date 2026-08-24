@@ -1,0 +1,35 @@
+---
+# roles/swerve_drive/defaults/main.yml
+# Twist -> swerve-module mixing (ros_pkgs/swerve_drive) for a SIMULATED swerve
+# robot. A swerve drivetrain in Gazebo is 8 independent joint controllers; no
+# Gazebo system does the mixing, so this node is the drivetrain: it subscribes
+# one body-frame Twist and commands every steer and drive joint. Pair it with a
+# holonomic Twist source (revhub's motion_control — a swerve can strafe, so
+# diffdrive_teleop's no-linear.y contract is exactly wrong here) and with
+# roles/gz_bridge to carry the joint topics into the simulator.
+#
+# Enable per host with swerve_drive_enabled: true.
+
+swerve_drive_enabled: false
+
+swerve_drive_workspace_dir: /opt/ros_ws
+swerve_drive_user: "{{ ros_user_name | default('ros') }}"
+swerve_drive_service_name: swerve-drive
+
+# The Twist this node consumes. NOT /cmd_vel and NOT /sim/cmd_vel: the fleet
+# keeps /cmd_vel for real robots (see the 2026-08-22 incident note in
+# buzzkill.yml), and /sim/cmd_vel is the diff-drive teleop's topic.
+swerve_drive_cmd_vel_topic: /sim/swerve/cmd_vel
+
+swerve_drive_wheel_radius: 0.0508
+
+# Zero the drive wheels when the Twist source goes quiet this long (steer is
+# held — recentring on stop is how a swerve robot lurches).
+swerve_drive_command_timeout_s: 0.5
+
+# The corners. Each entry: name, x, y (steer pivot in the body frame, m),
+# phi0_deg (the wheel's rolling heading at steer angle 0 — CAD exports freeze
+# the wheels at arbitrary angles, so this is per-module DATA, read from the
+# model, never assumed), steer_topic, drive_topic. See the patribots model's
+# UPSTREAM.md for how these are derived; set per host in host_vars.
+swerve_drive_modules: []

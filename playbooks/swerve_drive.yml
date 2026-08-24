@@ -1,0 +1,16 @@
+---
+# playbooks/swerve_drive.yml
+# Twist -> swerve-module mixing for a simulated swerve robot (patribots).
+# Run: ansible-playbook playbooks/swerve_drive.yml --limit buzzkill
+#
+# The full chain is: joystick -> motion_control (playbooks/xdrive.yml)
+#   -> /sim/swerve/cmd_vel -> twist_to_swerve (this) -> per-joint topics
+#   -> gz-bridge (playbooks/gz_bridge.yml) -> Gazebo.
+# Enable with `swerve_drive_enabled: true` in host_vars.
+
+- name: Install the swerve drive mixer
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: swerve_drive
+      when: swerve_drive_enabled | default(false)

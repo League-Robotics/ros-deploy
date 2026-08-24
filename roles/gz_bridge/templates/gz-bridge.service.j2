@@ -1,0 +1,28 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+#
+# Carries {{ gz_bridge_topics | length }} topics between ROS 2 (domain
+# {{ ros_domain_id }}) and Gazebo transport. Runs as {{ gz_bridge_user }} so it
+# shares the desktop simulator's gz-transport partition.
+Description=ROS <-> Gazebo topic bridge ({{ gz_bridge_topics | length }} topics)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ gz_bridge_user }}
+Environment=ROS_DOMAIN_ID={{ ros_domain_id }}
+Environment=ROS_LOCALHOST_ONLY=0
+{% if ros_static_peers is defined %}
+Environment=ROS_STATIC_PEERS={{ ros_static_peers | join(';') }}
+{% endif %}
+ExecStart=/bin/bash -c 'source /opt/ros/{{ ros_version }}/setup.bash && exec ros2 run ros_gz_bridge parameter_bridge \
+{% for t in gz_bridge_topics %}
+  "{{ t.topic }}@{{ t.ros_type }}{{ t.direction | default("]") }}{{ t.gz_type }}" \
+{% endfor %}
+  '
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

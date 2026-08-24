@@ -91,7 +91,18 @@ desktop_vnc_virtualgl: true
 # mode flag.
 install_joy: true
 diffdrive_teleop_enabled: true
-diffdrive_teleop_cmd_vel_topic: /cmd_vel
+
+# NOT /cmd_vel — the simulator must not publish on the fleet's shared command
+# topic. INCIDENT 2026-08-22: this host's teleop was publishing centred-stick
+# zeros at 20 Hz onto /cmd_vel on domain 42, which is the topic baldur's revhub
+# consumes to drive the REAL robot. Two publishers interleaving meant roughly
+# every other command baldur received was a stop, and it presented as a halting,
+# stuttering joystick on a completely different machine.
+#
+# Nothing about the sim needs the bare name: ros_gz_bridge maps this ROS topic
+# onto whatever gz topic the model's drive plugin listens on, so the sim side is
+# unaffected and the fleet keeps /cmd_vel to itself.
+diffdrive_teleop_cmd_vel_topic: /sim/cmd_vel
 
 # roles/joy assigns a sticky per-controller index in /var/lib/ros-joy/index.map.
 # The F310 briefly held index 1 while a Sipeed NanoKVM-USB dongle was attached
@@ -128,8 +139,19 @@ diffdrive_teleop_invert_turn: false
 # value is what you get -- measured 2.0 -> 2.10 m/s.
 # 1.3 m/s is about double the ~0.64 m/s the stock world allowed. Raise it here;
 # there is headroom to 3.0 before the world clamps again.
-diffdrive_teleop_max_linear: 1.3
-diffdrive_teleop_max_angular: 2.0
+# 0.45 m/s, NOT 1.3. The romi's wheel joints carry a hard limit of
+# velocity=15.708 rad/s, and at a 0.035 m wheel radius that caps the robot at
+# 0.55 m/s no matter what is commanded. Asking for 1.3 meant the top ~58% of
+# stick travel was clipped: the robot saturated almost immediately and there was
+# no proportional control left, which felt like sluggish, unresponsive steering.
+# 0.45 sits just under the ceiling and leaves wheel-speed headroom for turning,
+# so a turn while driving does not saturate one side. It also matches a real
+# Romi, which does about 0.5 m/s.
+diffdrive_teleop_max_linear: 0.45
+# Pure rotation costs each wheel omega * (separation/2) / radius = 2.01x the
+# commanded rad/s, so 1.8 needs 3.6 rad/s per wheel -- comfortably inside the
+# 15.708 limit even while driving forward at the new max_linear.
+diffdrive_teleop_max_angular: 1.8
 diffdrive_teleop_deadzone: 0.08
 
 # ── Not applicable on this host ───────────────────────────
@@ -137,11 +159,57 @@ diffdrive_teleop_deadzone: 0.08
 # hardware here" rather than an oversight.
 install_cameras: false
 install_revhub: false             # no REV Hub hardware on this host
-# roles/xdrive is the HOLONOMIC X-drive teleop; this host uses
-# roles/diffdrive_teleop above instead. Left explicitly false so the xdrive role
-# is not selected by site.yml.
+# No REV Hub, so none of the hardware-facing xdrive services run here. The one
+# node this host DOES borrow from roles/xdrive is motion_control, below.
 xdrive_run_driver: false
 xdrive_run_joy_to_twist: false
+xdrive_run_revhub: false
+xdrive_run_local_teleop: false
+
+# ── Holonomic teleop for the swerve sim (revhub's motion_control) ─────────
+# The patribots swerve robot can strafe, and diffdrive_teleop can NEVER emit
+# linear.y — that is its contract, not a gap (see its docstring). So the swerve
+# gets the fleet's existing holonomic joystick mapper instead of a new one:
+# revhub's motion_control, deployed by roles/xdrive with only this node enabled.
+#
+# Same F310 pad as the diff-drive teleop, different stick roles and a different
+# OUTPUT topic, so both teleops coexist: left stick drives whichever robot
+# listens on its topic. With a romi AND the patribots spawned at once, the left
+# stick moves both (same caveat as the tier-1 models sharing /cmd_vel);
+# despawn or ignore the one you are not driving.
+xdrive_run_motion_control: true
+xdrive_local_joy_topic: /buzzkill/joy/joystick0
+xdrive_cmd_vel_topic: /sim/swerve/cmd_vel
+# F310 in X mode: 0=LX 1=LY 3=RX (2 and 5 are the resting-at-full TRIGGERS —
+# never bind them). This pad measures POSITIVE up/left (see the diffdrive
+# calibration note above).
+#
+# THE STICKS ARE DELIBERATELY CRISS-CROSSED relative to the parameter names.
+# DRIVE TEST 2026-08-24 (Eric): the motion linear.x produces reads on screen as
+# a STRAFE, and linear.y reads as FORWARD — the model's documented body frame
+# points +x at the intake side, and the robot's visual driving front turns out
+# to be +y (its left). Rather than re-derive the whole module table, the pad is
+# wired to perception: LY (the natural forward stick) feeds linear.y, RX feeds
+# linear.x. So "axis_forward" below carries the STRAFE stick and vice versa —
+# the parameter names describe Twist components, not what the driver sees.
+# Scripts publishing /sim/swerve/cmd_vel directly still get the documented
+# frame: linear.x = intake side, linear.y = visual forward.
+xdrive_joy_axis_forward: 3     # RX -> linear.x, which reads as STRAFE on screen
+xdrive_joy_axis_yaw: 0         # LX: rotate (validated correct 2026-08-24)
+xdrive_joy_axis_strafe: 1      # LY -> linear.y, which reads as FORWARD on screen
+# invert_forward true: strafe-right must be -linear.y... i.e. pushing RX RIGHT
+# (which this pad family reads as NEGATIVE) must give +linear.x. UNVERIFIED on
+# the right stick — the up/left-positive measurement was made on the LEFT
+# stick. If strafe comes out mirrored, flip this one flag.
+xdrive_joy_invert_forward: true
+xdrive_joy_invert_yaw: false
+xdrive_joy_invert_strafe: false   # LY up measured +1 -> +linear.y = forward
+# max_linear scales BOTH linear axes (m/s at full stick), max_angular rad/s.
+# 2.0 m/s is a calm gym pace for an FRC swerve (real robot does ~4.5); wheels
+# at 0.0508 m radius need 39 rad/s for it, and the sim wheels are unlimited.
+xdrive_joy_max_linear: 2.0
+xdrive_joy_max_angular: 3.0
+xdrive_joy_deadzone: 0.08
 
 # Wired-only workstation on the garage LAN, so the WiFi/wired roles that manage
 # the Pis' dual-homed addressing do not apply.
@@ -182,3 +250,114 @@ joint_teleop_joints:
   - name: rear_right
     topic: /model/simple_tracked/flipper/rear_right/cmd_pos
     axis: 6
+
+  # ── patribots mechanisms, same node, same pad ───────────
+  # The D-pad axes are SHARED with the flipper pairs above: the tracked vehicle
+  # and the patribots are never driven at once, and a command to a model that
+  # is not spawned goes nowhere. If both are ever in one world, the D-pad will
+  # move flippers and turret/intake together — despawn one.
+  # Y (button 3) homes EVERYTHING: flippers level, turret/hood/intake to 0
+  # (stowed), flywheel stopped.
+  # Ranges are the model's joint limits (urdf-collection UPSTREAM.md); the
+  # per-joint min/max exist because these three mechanisms share one node with
+  # the +/-1.2 rad flippers.
+  - name: turret            # D-pad left/right sweeps the shooter azimuth
+    topic: /model/patribots/turret/cmd_pos
+    axis: 6
+    scale: 1.25             # 0.8 rad/s base rate * 1.25 = 1 rad/s, the sim's turret velocity cap
+    min_angle: 0.0
+    max_angle: 6.14
+  - name: hood              # right stick Y trims the shot elevation
+    topic: /model/patribots/hood/cmd_pos
+    axis: 4
+    scale: 0.4              # 0.32 rad/s across a 0.44 rad range: fine aiming
+    min_angle: -0.0386
+    max_angle: 0.3977
+  - name: intake            # D-pad down deploys the scoop, up stows it
+    topic: /model/patribots/intake/cmd_pos
+    axis: 7
+    scale: 2.0              # 1.6 rad/s: ~1.3 s to full deploy
+    min_angle: -2.138
+    max_angle: 0.0
+  - name: flywheel          # hold RB to spin the shooter, release to stop
+    topic: /model/patribots/flywheel/cmd_vel
+    mode: velocity
+    button: 5
+    speed: 200.0            # rad/s at the wheel (~1900 rpm)
+
+# ── Swerve drive mixing (patribots sim) ───────────────────
+# The patribots model (FRC 4738, /opt/gazebo/models, from urdf-collection) has
+# a position controller on each steer joint and a velocity controller on each
+# drive wheel — but swerve MIXING has no Gazebo system, so roles/swerve_drive
+# runs twist_to_swerve here: motion_control's /sim/swerve/cmd_vel in, eight
+# joint commands out, bridged into the simulator by gz-bridge below.
+#
+# Every number is DATA read from the model, not convention. The CAD export
+# froze each wheel at an arbitrary heading, so phi0_deg differs per corner;
+# x/y are the steer pivots relative to the wheelbase centre with +x toward the
+# robot's front (the intake side, which is -x in the model's CAD frame). The
+# derivations live in the model's UPSTREAM.md, and the same table is pinned by
+# ros_pkgs/swerve_drive's kinematics tests. Validated on 2026-08-23: translate,
+# strafe, and a 2.7 rad spin with ~1 mm wheelbase-centre drift.
+swerve_drive_enabled: true
+swerve_drive_cmd_vel_topic: /sim/swerve/cmd_vel
+swerve_drive_wheel_radius: 0.0508
+swerve_drive_modules:
+  - name: front_left
+    x: 0.276
+    y: 0.277
+    phi0_deg: -52.87
+    steer_topic: /model/patribots/front_left/steer/cmd_pos
+    drive_topic: /model/patribots/front_left/drive/cmd_vel
+  - name: front_right
+    x: 0.276
+    y: -0.276
+    phi0_deg: 168.67
+    steer_topic: /model/patribots/front_right/steer/cmd_pos
+    drive_topic: /model/patribots/front_right/drive/cmd_vel
+  - name: rear_left
+    x: -0.276
+    y: 0.277
+    phi0_deg: 39.89
+    steer_topic: /model/patribots/rear_left/steer/cmd_pos
+    drive_topic: /model/patribots/rear_left/drive/cmd_vel
+  - name: rear_right
+    x: -0.276
+    y: -0.276
+    phi0_deg: 132.71
+    steer_topic: /model/patribots/rear_right/steer/cmd_pos
+    drive_topic: /model/patribots/rear_right/drive/cmd_vel
+
+# ── Persistent ROS <-> Gazebo bridge ──────────────────────
+# Every topic a fleet service expects to reach the simulator, in one always-on
+# parameter_bridge (roles/gz_bridge). Until this unit existed the bridge was
+# run by hand over SSH, so teleop chains dead-ended at the ROS/gz boundary
+# after every reboot. Topics whose model is not spawned just idle.
+# Directions: "]" ROS->gz commands, "[" gz->ROS telemetry — deliberately not
+# "@", which would echo commands back at their publisher.
+gz_bridge_enabled: true
+gz_bridge_topics:
+  # patribots swerve corners (fed by swerve-drive.service)
+  - {topic: /model/patribots/front_left/steer/cmd_pos,  ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/front_left/drive/cmd_vel,  ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/front_right/steer/cmd_pos, ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/front_right/drive/cmd_vel, ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/rear_left/steer/cmd_pos,   ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/rear_left/drive/cmd_vel,   ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/rear_right/steer/cmd_pos,  ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/rear_right/drive/cmd_vel,  ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  # patribots mechanisms — commandable from any ROS node or the CLI
+  - {topic: /model/patribots/turret/cmd_pos,    ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/hood/cmd_pos,      ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/intake/cmd_pos,    ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/climber/cmd_pos,   ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/flywheel/cmd_vel,  ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/patribots/spindexer/cmd_vel, ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  # patribots world pose, sim -> ROS
+  - {topic: /model/patribots/odometry, ros_type: nav_msgs/msg/Odometry, gz_type: gz.msgs.Odometry, direction: "["}
+  # tracked-vehicle flippers (fed by joint-teleop.service, see above) — these
+  # were the topics that previously needed a hand-run bridge
+  - {topic: /model/simple_tracked/flipper/front_left/cmd_pos,  ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/simple_tracked/flipper/front_right/cmd_pos, ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/simple_tracked/flipper/rear_left/cmd_pos,   ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}
+  - {topic: /model/simple_tracked/flipper/rear_right/cmd_pos,  ros_type: std_msgs/msg/Float64, gz_type: gz.msgs.Double}

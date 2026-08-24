@@ -97,15 +97,22 @@
     - role: revhub
       when: install_revhub | default(false)
 
-# Build the in-repo xdrive package and run its services: the driver on the robot
-# (xdrive_run_driver), the joystick->Twist mapper on the operator host
-# (xdrive_run_joy_to_twist).
+# Build the in-repo revhub package and run whichever of its services this host
+# enables: the hub driver / local teleop on the robot, the joystick->Twist
+# mappers on operator hosts. motion_control also serves as the holonomic
+# teleop for the swerve sim on buzzkill — same condition list as
+# playbooks/xdrive.yml, which previously covered more services than this play.
 - name: Build xdrive and run the X-drive teleop services
   hosts: ros_nodes
   become: true
   roles:
     - role: xdrive
-      when: (xdrive_run_driver | default(false)) or (xdrive_run_joy_to_twist | default(false))
+      when: >-
+        (xdrive_run_driver | default(false))
+        or (xdrive_run_joy_to_twist | default(false))
+        or (xdrive_run_local_teleop | default(false))
+        or (xdrive_run_revhub | default(false))
+        or (xdrive_run_motion_control | default(false))
 
 # Differential-drive joystick teleop (roles/diffdrive_teleop). Separate from the
 # xdrive play above: that one is the holonomic X-drive, this one is two-wheel
@@ -125,6 +132,25 @@
   roles:
     - role: joint_teleop
       when: joint_teleop_enabled | default(false)
+
+# Swerve mixing for simulated swerve robots: one Twist in, a steer position and
+# a wheel velocity per corner out. Sits between a holonomic Twist source
+# (motion_control above) and the gz bridge below.
+- name: Install the swerve drive mixer
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: swerve_drive
+      when: swerve_drive_enabled | default(false)
+
+# Persistent ROS <-> Gazebo topic bridge on simulation hosts, so teleop chains
+# survive reboots instead of dead-ending at a hand-run bridge.
+- name: Install the ROS <-> Gazebo topic bridge
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: gz_bridge
+      when: gz_bridge_enabled | default(false)
 
 - name: Configure X Windows forwarding
   hosts: ros_all

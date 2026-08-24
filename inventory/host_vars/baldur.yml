@@ -75,11 +75,19 @@ xdrive_local_joy_topic: /baldur/joy/joystick0
 # stick X. The X axes were swapped between sticks from the original layout.
 xdrive_joy_axis_yaw: 0      # left stick X = rotate
 xdrive_joy_axis_strafe: 3   # right stick X = strafe
-# STICK TEST 2026-08-04: forward/back correct with the default inversion, but
-# both X axes read the direction we want raw — don't invert them (validated
-# before the stick swap; the sense follows the physical axis).
-xdrive_joy_invert_strafe: false
-xdrive_joy_invert_yaw: false
+# STICK TEST 2026-08-22: ALL THREE axes drove backwards — pushing up went back,
+# turns and strafe both mirrored. So every sense is flipped relative to the
+# 2026-08-04 calibration, which is the signature of a different PAD rather than
+# a wiring change: /var/lib/ros-joy/index.map carries both the 8BitDo (index 0)
+# and a Logitech Dual Action (index 1), and the old values were validated on the
+# Logitech. The 8BitDo reports the opposite sign on every axis.
+#
+# Flipped as a set, not individually — one pad swap inverts all three at once,
+# and treating them as three separate faults is how you end up chasing your tail.
+# Re-measure rather than assume if the pad changes again.
+xdrive_joy_invert_forward: false   # was the role default `true`
+xdrive_joy_invert_strafe: true
+xdrive_joy_invert_yaw: true
 
 # Deterministic DDS discovery (see ali.yml): localhost for the on-robot pad
 # chain, ali for the operator-station mapper reaching this driver.

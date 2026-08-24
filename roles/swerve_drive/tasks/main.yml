@@ -1,0 +1,55 @@
+---
+# roles/swerve_drive/tasks/main.yml
+
+- name: Ensure colcon workspace src/ directory exists
+  ansible.builtin.file:
+    path: "{{ swerve_drive_workspace_dir }}/src"
+    state: directory
+    owner: "{{ swerve_drive_user }}"
+    group: "{{ swerve_drive_user }}"
+    mode: "0755"
+
+- name: Sync swerve_drive package sources into the workspace
+  ansible.builtin.synchronize:
+    src: "{{ playbook_dir }}/../ros_pkgs/swerve_drive/"
+    dest: "{{ swerve_drive_workspace_dir }}/src/swerve_drive/"
+    delete: true
+    rsync_opts:
+      - "--exclude=__pycache__"
+      - "--exclude=.pytest_cache"
+  register: _sd_sync
+
+- name: Check whether swerve_drive install artifacts already exist
+  ansible.builtin.stat:
+    path: "{{ swerve_drive_workspace_dir }}/install/swerve_drive"
+  register: _sd_install_stat
+
+- name: Build swerve_drive with colcon
+  ansible.builtin.shell: |
+    set -eo pipefail
+    source /opt/ros/{{ ros_version }}/setup.bash
+    cd {{ swerve_drive_workspace_dir }}
+    colcon build --packages-select swerve_drive --symlink-install
+  args:
+    executable: /bin/bash
+  when: _sd_sync is changed or not _sd_install_stat.stat.exists
+  changed_when: true
+  notify: Restart swerve drive
+
+- name: Deploy the swerve drive systemd unit
+  ansible.builtin.template:
+    src: swerve-drive.service.j2
+    dest: "/etc/systemd/system/{{ swerve_drive_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart swerve drive
+
+- name: Enable and start swerve drive
+  ansible.builtin.systemd:
+    name: "{{ swerve_drive_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

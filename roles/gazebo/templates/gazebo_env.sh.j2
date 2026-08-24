@@ -15,6 +15,18 @@ export GZ_VERSION="{{ gazebo_release }}"
 # referenced by name from any directory. Fleet assets live in
 # {{ gazebo_assets_dir }}; anything already in the variable is preserved.
 GZ_FLEET_RESOURCES="{{ gazebo_assets_dir }}/worlds:{{ gazebo_assets_dir }}/models"
+
+# Gazebo scans each directory on this path exactly ONE level deep — it does not
+# recurse. So a models dir whose entries are group directories rather than
+# models (e.g. a collection filed by category) resolves nothing unless each
+# group is listed too. A directory holding a model.sdf IS a model and is
+# already reachable; anything else is treated as a group and added.
+for _gz_group in {{ gazebo_assets_dir }}/models/*/; do
+  [ -d "$_gz_group" ] || continue                   # no match: the glob itself
+  [ -f "${_gz_group}model.sdf" ] && continue        # a model, not a group
+  GZ_FLEET_RESOURCES="${GZ_FLEET_RESOURCES}:${_gz_group%/}"
+done
+unset _gz_group
 case ":${GZ_SIM_RESOURCE_PATH:-}:" in
   *":{{ gazebo_assets_dir }}/worlds:"*)
     # Already present — re-sourcing the profile must not grow the path.
