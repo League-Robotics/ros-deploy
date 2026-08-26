@@ -31,6 +31,7 @@ playbooks/
   gazebo.yml                 Gazebo + ros_gz on simulation hosts
   diffdrive_teleop.yml       Joystick teleop for differential-drive robots
   joint_teleop.yml           Joystick control of articulated joints
+  microbit_relay.yml         Serve USB micro:bit radio relays over TCP
   xwindows.yml               X11 forwarding
 roles/
   ansible_user/              Creates ansible OS user + sudoers + authorized_key
@@ -70,6 +71,18 @@ roles/
                              Module geometry is host_vars data (see the
                              patribots model's UPSTREAM.md in urdf-collection).
                              Twist source: revhub's motion_control (holonomic).
+  microbit_relay/            Serves USB-attached micro:bit radio relays over
+                             TCP (the `mbrelay` daemon, installed from the
+                             microbit-radio-relay repo's release assets). A
+                             client connects to the pool port, is bound to a
+                             free relay, and the socket is then a transparent
+                             byte pipe to that board's serial port. On
+                             disconnect the daemon resets the board and
+                             restores factory defaults, so nobody inherits the
+                             previous user's radio channel. Installs a udev
+                             rule giving /dev/microbit/<uid> symlinks so
+                             ttyACM renumbering stops mattering. Enabled on
+                             torture (four boards); pool port 8760.
   gz_bridge/                 Persistent ros_gz parameter_bridge as a systemd
                              unit, topics listed in host_vars. Runs as the
                              shared ros user ON PURPOSE: gz-transport's default
@@ -125,6 +138,9 @@ config/                      dotconfig tree (keys, secrets, env files)
 | `joint_teleop_enabled` | `false`              | Joystick control of articulated joints |
 | `swerve_drive_enabled` | `false`              | Twist -> swerve mixing for a simulated swerve robot |
 | `gz_bridge_enabled`    | `false`              | Persistent ROS <-> Gazebo topic bridge (sim hosts) |
+| `microbit_relay_enabled` | `false`            | Serve USB micro:bit radio relays over TCP (torture) |
+| `microbit_relay_port`  | `8760`               | Pool port: connect and get any free relay |
+| `microbit_relay_install_flasher` | `false`    | Also install mbdeploy + pyocd, for `mbrelay flash` |
 | `desktop_vnc_virtualgl` | `false`              | Run the VNC session under VirtualGL (GPU, not llvmpipe) |
 | `install_docker`      | `false`                | Run docker role |
 | `ros_in_docker`       | `false`                | Run ros_docker role |

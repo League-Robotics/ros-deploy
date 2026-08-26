@@ -1,0 +1,36 @@
+[Unit]
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+Description=micro:bit radio relay TCP server
+Documentation=https://github.com/Busboombot/microbit-radio-relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# A real account, in dialout and plugdev, so the daemon can open /dev/ttyACM*.
+User={{ microbit_relay_user }}
+SupplementaryGroups=dialout plugdev
+RuntimeDirectory=mbrelay
+RuntimeDirectoryMode=0755
+StateDirectory=mbrelay
+WorkingDirectory={{ microbit_relay_dir }}
+ExecStart={{ _mbrelay_bin.stdout }} serve --config {{ microbit_relay_config_dir }}/mbrelay.toml
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+# Must exceed state.shutdown_grace_s in mbrelay.toml (20s). On SIGTERM the
+# daemon resets every bound board back to factory defaults before exiting; if
+# systemd kills it partway through, a board is left on the last client's channel
+# and the next student's radio is quietly on the wrong frequency.
+TimeoutStopSec=30
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# Not PrivateDevices: the whole job is opening tty devices.
+PrivateDevices=no
+DeviceAllow=char-ttyACM rw
+ReadWritePaths={{ microbit_relay_state_dir }}
+
+[Install]
+WantedBy=multi-user.target

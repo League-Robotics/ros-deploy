@@ -152,6 +152,17 @@
     - role: gz_bridge
       when: gz_bridge_enabled | default(false)
 
+# Serves USB-attached micro:bit radio relays over TCP (roles/microbit_relay).
+# Independent of the ROS stack -- it is a plain daemon with one dependency --
+# but it lives here because the boards live on fleet hosts and the access rules
+# (dialout, plugdev, udev) are the same ones roles/revhub and roles/joy set up.
+- name: Install the micro:bit relay server
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: microbit_relay
+      when: microbit_relay_enabled | default(false)
+
 - name: Configure X Windows forwarding
   hosts: ros_all
   become: true

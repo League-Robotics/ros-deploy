@@ -17,3 +17,12 @@ configure_desktop: true
 # service account. Without this the role tries to start a second VNC server as
 # `ansible` on display :1, which eric's session already holds (exit status 98).
 desktop_user: eric
+
+# torture carries the bench micro:bits (four on its USB bus), so it runs the
+# relay server: clients anywhere on the fleet net can borrow a radio bridge
+# from it instead of having to sit at the machine. Pool port 8760.
+microbit_relay_enabled: true
+
+# This is also the host we reflash boards from, so it gets mbdeploy + pyocd.
+# The daemon itself does not need them -- only `mbrelay flash` does.
+microbit_relay_install_flasher: true

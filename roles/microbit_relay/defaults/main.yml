@@ -1,0 +1,96 @@
+---
+# roles/microbit_relay/defaults/main.yml
+# Serve USB-attached micro:bit radio relays over TCP (the `mbrelay` daemon).
+#
+# A micro:bit running the radio-relay firmware bridges its USB serial port to
+# the nRF radio. Useful, but only to whoever is sitting at the machine it is
+# plugged into. This role runs a daemon that hands those boards out over the
+# network: a client connects to the pool port, gets bound to a free relay, and
+# from then on the socket behaves exactly like opening /dev/ttyACM0 directly.
+#
+# On disconnect the daemon resets the board and restores factory defaults
+# (channel 0, group 10, RAW250, echo off), so the next user never inherits the
+# previous one's channel. That is the whole reason the service exists rather
+# than a socat one-liner.
+#
+# Enable per host with `microbit_relay_enabled: true`. Currently: torture, which
+# has four boards on its USB bus.
+#
+# Upstream: https://github.com/Busboombot/microbit-radio-relay
+
+microbit_relay_enabled: false
+
+# ── Where the code comes from ─────────────────────────────
+# GitHub release assets: the repo's release.yml workflow publishes MICROBIT.hex
+# and the Python wheel on every v* tag, and this role fetches both. One publish
+# then feeds every host, and a node's version is a tag rather than "whatever was
+# on someone's laptop that afternoon".
+#
+# Set microbit_relay_version to a tag (e.g. "v0.1.0") to pin. "latest" resolves
+# through the GitHub API at run time, which needs outbound HTTPS on the node.
+microbit_relay_repo: Busboombot/microbit-radio-relay
+microbit_relay_version: latest
+
+# Escape hatch for iterating without cutting a release: point this at a wheel
+# already on the node (upload it yourself, or rsync from the control machine)
+# and the GitHub fetch is skipped entirely.
+microbit_relay_local_wheel: ""
+
+# ── Service identity ──────────────────────────────────────
+# Runs as the shared `ros` account rather than a dedicated user: roles/ros_user
+# already puts it in dialout and plugdev, which is exactly the access a serial
+# device needs, and one fewer account is one fewer thing to keep in sync.
+microbit_relay_user: "{{ ros_user_name | default('ros') }}"
+microbit_relay_service_name: mbrelay
+microbit_relay_dir: /opt/microbit-relay
+microbit_relay_config_dir: /etc/mbrelay
+microbit_relay_state_dir: /var/lib/mbrelay
+
+# ── Network ───────────────────────────────────────────────
+# The pool port. One port, any free relay -- there is no way to request a
+# specific board, deliberately: selecting one would need an in-band handshake,
+# and that would stop the socket being a transparent byte pipe.
+microbit_relay_bind: "0.0.0.0"
+microbit_relay_port: 8760
+
+# Sent (plus CRLF) and then the socket is closed when nothing is free. A byte
+# pipe has no error channel, so the reason goes out in the relay's own comment
+# syntax: any client that already skips "#" lines is unaffected, and a human on
+# netcat can read why. Set to "" to close silently instead.
+microbit_relay_reject_message: "# ERROR: no relay available ({total} devices, {busy} busy)"
+
+# 0 = reject immediately when nothing is free. Releasing a board takes two to
+# three seconds (reset + re-verify), so a test harness that reconnects the
+# instant it disconnects will be refused. Set this to ~8000 on a host used that
+# way and the connect waits instead of failing.
+microbit_relay_acquire_wait_ms: 0
+
+# ── Devices ───────────────────────────────────────────────
+# Empty allow list = every micro:bit found on USB. Both accept UIDs or names.
+microbit_relay_allow: []
+microbit_relay_deny: []
+
+# Only the C++/CODAL relay firmware is driveable. The older MakeCode RADIORELAY
+# boards announce themselves too, but do not accept !ECHO ON / !MODE, so the
+# daemon cannot verify it has restored them to a known state -- and handing out
+# a board it cannot clean up would break the one promise this service makes.
+microbit_relay_allow_roles: ["RADIOBRIDGE"]
+
+# Friendly names, keyed by DAPLink UID. Note the UID's *tail* is the interface
+# chip and is identical across boards -- the distinguishing field is in the
+# middle. Get them with `mbrelay devices`.
+microbit_relay_labels: {}
+
+# Group given ownership of the raw USB device node. pyOCD needs raw USB access
+# to speak CMSIS-DAP; serial access alone is not enough. roles/ros_user already
+# puts the service account in plugdev.
+microbit_relay_usb_group: plugdev
+
+# ── Firmware flashing (optional) ──────────────────────────
+# The daemon has no runtime dependency on any of this; it is only needed for
+# `mbrelay flash`, which reflashes boards in place via mbdeploy + pyocd. Worth
+# having on the bench host, pointless on a host that only serves relays.
+microbit_relay_install_flasher: false
+microbit_relay_mbdeploy_spec: "git+https://github.com/Busboombot/mbdeploy"
+
+microbit_relay_log_level: info

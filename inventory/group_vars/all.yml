@@ -109,3 +109,14 @@ ros_kilted_image: "ros:kilted-ros-base"
 # roles/ros_docker's _ros_docker_image fact still needs a lyrical branch before
 # ros_in_docker works on a 26.04 host. Add both if a Docker node moves to 26.04.
 ros_lyrical_image: "ros:lyrical-ros-base"
+
+# ── micro:bit relay server (roles/microbit_relay) ────────
+# Whether this host serves its USB-attached micro:bit radio relays over TCP.
+# A client connects to the pool port, gets bound to a free relay, and the socket
+# then behaves exactly like opening that board's serial port directly. On
+# disconnect the daemon resets the board to factory defaults so the next user
+# does not inherit the previous one's radio channel.
+#
+# Off by default: it only makes sense where micro:bits are physically plugged
+# in. Enabled per host (torture, which has four). See playbooks/microbit_relay.yml.
+microbit_relay_enabled: false

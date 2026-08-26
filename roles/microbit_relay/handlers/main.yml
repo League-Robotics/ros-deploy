@@ -1,0 +1,27 @@
+---
+# roles/microbit_relay/handlers/main.yml
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart mbrelay
+  ansible.builtin.systemd:
+    name: "{{ microbit_relay_service_name }}"
+    state: restarted
+    daemon_reload: true
+
+- name: Reload udev rules
+  ansible.builtin.command: udevadm control --reload
+  changed_when: true
+
+# Without this the new rules only apply to boards plugged in after the run,
+# which on a host with four permanently-attached micro:bits means never.
+# Both subsystems: tty carries the serial port, usb carries CMSIS-DAP.
+- name: Trigger udev for tty devices
+  ansible.builtin.command: udevadm trigger --subsystem-match=tty --action=add
+  changed_when: true
+
+- name: Trigger udev for usb devices
+  ansible.builtin.command: udevadm trigger --subsystem-match=usb --action=add
+  changed_when: true

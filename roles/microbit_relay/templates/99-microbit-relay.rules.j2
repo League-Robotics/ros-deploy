@@ -1,0 +1,27 @@
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+#
+# BBC micro:bit DAPLink interface chip (V1 and V2 both present 0d28:0204).
+#
+# TWO rules, because the board is reached two different ways and they are
+# governed by different subsystems:
+#
+#   tty  -- the CDC serial port. This is what mbrelay uses to talk to the relay
+#           firmware, and the SYMLINK is the valuable part: /dev/microbit/<uid>
+#           is stable across replugs, whereas /dev/ttyACM0..3 renumber depending
+#           on the order the kernel happens to enumerate them.
+#
+#   usb  -- the raw USB device. pyOCD (and therefore `mbrelay flash`, which
+#           drives it via mbdeploy) speaks CMSIS-DAP over this, NOT over the tty.
+#           Without this rule flashing fails with "[Errno 13] Access denied
+#           ... while trying to interrogate a USB device" even though the serial
+#           side works perfectly, which is a confusing pair of symptoms.
+#
+# plugdev rather than 0666: the fleet's service accounts are already in that
+# group (see roles/ros_user), so there is no reason to open the device to
+# everyone on the machine.
+
+SUBSYSTEM=="tty", SUBSYSTEMS=="usb", ATTRS{idVendor}=="0d28", ATTRS{idProduct}=="0204", \
+  GROUP="dialout", MODE="0660", SYMLINK+="microbit/$attr{serial}"
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="0d28", ATTR{idProduct}=="0204", \
+  GROUP="{{ microbit_relay_usb_group }}", MODE="0660"

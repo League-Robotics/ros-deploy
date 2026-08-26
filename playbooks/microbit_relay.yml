@@ -1,0 +1,15 @@
+---
+# playbooks/microbit_relay.yml
+# Serve USB-attached micro:bit radio relays over TCP.
+# Run: ansible-playbook playbooks/microbit_relay.yml --limit torture
+#
+# Enable a host with `microbit_relay_enabled: true` in its host_vars. The host
+# needs micro:bits physically plugged in and outbound HTTPS to GitHub (the role
+# installs from release assets).
+
+- name: Install the micro:bit relay server
+  hosts: ros_nodes
+  become: true
+  roles:
+    - role: microbit_relay
+      when: microbit_relay_enabled | default(false)

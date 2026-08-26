@@ -1,0 +1,63 @@
+# Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+# See `mbrelay config show` for the merged result and where each value came from.
+#
+# Unknown keys are a startup error, not a warning: a typo in this file must not
+# leave the service running with a silently different setting.
+
+[server]
+bind = "{{ microbit_relay_bind }}"
+port = {{ microbit_relay_port }}
+
+# A byte pipe has no error channel, so "nothing free" is reported in the relay's
+# own "#" comment syntax and the socket is then closed.
+reject_message = "{{ microbit_relay_reject_message }}"
+
+# 0 rejects immediately. Releasing a board takes 2-3s (reset + re-verify), so a
+# client that reconnects instantly can be refused; raise this on a host whose
+# clients do that.
+acquire_wait_ms = {{ microbit_relay_acquire_wait_ms }}
+
+# Replay the board's announcement banner as the first thing a client reads,
+# matching what opening the serial port directly would show.
+preamble = "banner"
+
+# Reap clients whose machine went to sleep, instead of letting them hold a relay
+# indefinitely.
+keepalive = true
+
+[devices]
+{% if microbit_relay_allow %}
+allow = {{ microbit_relay_allow | to_json }}
+{% endif %}
+{% if microbit_relay_deny %}
+deny = {{ microbit_relay_deny | to_json }}
+{% endif %}
+allow_roles = {{ microbit_relay_allow_roles | to_json }}
+{% if microbit_relay_labels %}
+
+[devices.labels]
+{% for uid, label in microbit_relay_labels.items() %}
+"{{ uid }}" = "{{ label }}"
+{% endfor %}
+{% endif %}
+
+[admin]
+socket = "/run/mbrelay/mbrelay.sock"
+socket_mode = "0660"
+# systemd owns the lifecycle; use systemctl, not the admin socket.
+allow_shutdown = false
+
+[firmware]
+hex = "{{ microbit_relay_dir }}/MICROBIT.hex"
+# pyocd reads pyocd.yaml from its cwd; this directory holds the one that forces
+# a full chip erase (a sector erase fails on the nRF52833 MBR region at 0x0).
+pyocd_config = "{{ microbit_relay_dir }}/pyocd.yaml"
+registry = "{{ microbit_relay_state_dir }}/mbdeploy-registry.json"
+
+[state]
+dir = "{{ microbit_relay_state_dir }}"
+# The systemd unit's TimeoutStopSec must exceed this.
+shutdown_grace_s = 20
+
+[log]
+level = "{{ microbit_relay_log_level }}"

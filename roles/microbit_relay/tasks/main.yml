@@ -1,0 +1,254 @@
+---
+# roles/microbit_relay/tasks/main.yml
+# Install the mbrelay daemon, its udev rule, and the relay firmware image.
+
+- name: Install Python runtime dependencies
+  ansible.builtin.apt:
+    name:
+      - python3-serial     # the daemon's only runtime dependency
+      - python3-pip
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the application and state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ microbit_relay_dir }}"
+    - "{{ microbit_relay_config_dir }}"
+
+# The daemon writes its identity cache here. Owned by the service user, not
+# root: systemd's StateDirectory= would create it too, but doing it explicitly
+# means `mbrelay devices` also works when run by hand.
+- name: Create the state directory owned by the service user
+  ansible.builtin.file:
+    path: "{{ microbit_relay_state_dir }}"
+    state: directory
+    owner: "{{ microbit_relay_user }}"
+    group: "{{ microbit_relay_user }}"
+    mode: "0755"
+
+# ── USB access ────────────────────────────────────────────
+# SYMLINK+= is the valuable half: /dev/microbit/<uid> is stable across replugs,
+# so ttyACM renumbering stops mattering. The daemon prefers that path when it
+# exists and falls back to whatever pyserial reports.
+- name: Deploy the micro:bit udev rule
+  ansible.builtin.template:
+    src: 99-microbit-relay.rules.j2
+    dest: /etc/udev/rules.d/99-microbit-relay.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload udev rules
+    - Trigger udev for tty devices
+    - Trigger udev for usb devices
+
+- name: Ensure the service user can open serial devices
+  ansible.builtin.user:
+    name: "{{ microbit_relay_user }}"
+    groups: dialout,plugdev
+    append: true
+
+# Handlers only fire when the template CHANGES, so a host whose rule file is
+# already correct but was never triggered (or that has boards plugged in from
+# before the rule existed) would never converge. Check the live device nodes
+# instead and retrigger when they are wrong -- what matters is the state of the
+# hardware, not whether a file happened to change on this run.
+- name: Check whether the micro:bit USB nodes already have the right group
+  ansible.builtin.shell: |
+    set -o pipefail
+    for node in $(grep -l . /sys/bus/usb/devices/*/idVendor 2>/dev/null); do
+      dir=$(dirname "$node")
+      [ "$(cat "$dir/idVendor" 2>/dev/null)" = "0d28" ] || continue
+      [ "$(cat "$dir/idProduct" 2>/dev/null)" = "0204" ] || continue
+      busnum=$(cat "$dir/busnum"); devnum=$(cat "$dir/devnum")
+      dev=$(printf '/dev/bus/usb/%03d/%03d' "$busnum" "$devnum")
+      [ -e "$dev" ] || continue
+      [ "$(stat -c %G "$dev")" = "{{ microbit_relay_usb_group }}" ] || echo "$dev"
+    done
+  args:
+    executable: /bin/bash
+  register: _mbrelay_usb_wrong
+  changed_when: false
+  failed_when: false
+
+- name: Apply the udev rules to already-attached boards
+  ansible.builtin.command: "{{ item }}"
+  loop:
+    - udevadm control --reload
+    - udevadm trigger --subsystem-match=tty --action=add
+    - udevadm trigger --subsystem-match=usb --action=add
+  when: _mbrelay_usb_wrong.stdout | default('') | trim | length > 0
+  changed_when: true
+
+# ── Fetch the release ─────────────────────────────────────
+- name: Resolve the release to install
+  when: microbit_relay_local_wheel | length == 0
+  block:
+    - name: Look up the release metadata on GitHub
+      ansible.builtin.uri:
+        url: >-
+          https://api.github.com/repos/{{ microbit_relay_repo }}/releases/{{
+          'latest' if microbit_relay_version == 'latest'
+          else 'tags/' + microbit_relay_version }}
+        return_content: true
+        headers:
+          Accept: application/vnd.github+json
+      register: _mbrelay_release
+      # A node with no outbound HTTPS should say so plainly rather than fail
+      # somewhere further down with a confusing 404 on a download.
+      failed_when: _mbrelay_release.status != 200
+
+    - name: Identify the wheel and firmware assets
+      ansible.builtin.set_fact:
+        _mbrelay_tag: "{{ _mbrelay_release.json.tag_name }}"
+        _mbrelay_wheel_url: >-
+          {{ _mbrelay_release.json.assets
+             | selectattr('name', 'search', '\.whl$')
+             | map(attribute='browser_download_url') | first }}
+        _mbrelay_hex_url: >-
+          {{ _mbrelay_release.json.assets
+             | selectattr('name', 'equalto', 'MICROBIT.hex')
+             | map(attribute='browser_download_url') | first }}
+
+    - name: Download the mbrelay wheel
+      ansible.builtin.get_url:
+        url: "{{ _mbrelay_wheel_url }}"
+        dest: "{{ microbit_relay_dir }}/{{ _mbrelay_wheel_url | basename }}"
+        owner: root
+        group: root
+        mode: "0644"
+      register: _mbrelay_wheel
+
+    - name: Download the relay firmware image
+      ansible.builtin.get_url:
+        url: "{{ _mbrelay_hex_url }}"
+        dest: "{{ microbit_relay_dir }}/MICROBIT.hex"
+        owner: root
+        group: root
+        mode: "0644"
+
+- name: Use a locally supplied wheel instead of a release
+  when: microbit_relay_local_wheel | length > 0
+  block:
+    - name: Register the local wheel
+      ansible.builtin.set_fact:
+        _mbrelay_tag: local
+        _mbrelay_wheel:
+          dest: "{{ microbit_relay_local_wheel }}"
+          changed: true
+
+# ── Install ───────────────────────────────────────────────
+# Whether mbrelay is already importable, so a re-run where the wheel file was
+# already on disk (download reports "not changed") still installs it. Without
+# this, a partially-completed first run would leave the node with a downloaded
+# wheel and no package, and every subsequent run would skip the install.
+- name: Check whether mbrelay is already importable
+  ansible.builtin.command: python3 -c "import mbrelay; print(mbrelay.__version__)"
+  register: _mbrelay_probe
+  changed_when: false
+  failed_when: false
+
+# --break-system-packages because Ubuntu 24.04 marks the system interpreter
+# PEP-668 externally-managed. Same call the revhub role makes, for the same
+# reason: a venv would need its own systemd plumbing to buy nothing, since the
+# package has exactly one dependency and it is already an apt package.
+- name: Install mbrelay into system site-packages
+  ansible.builtin.pip:
+    name: "{{ _mbrelay_wheel.dest }}"
+    executable: /usr/bin/pip3
+    state: forcereinstall
+    extra_args: --break-system-packages --no-deps
+  when: (_mbrelay_wheel.changed | default(false)) or _mbrelay_probe.rc != 0
+  notify: Restart mbrelay
+
+- name: Find where the console script landed
+  ansible.builtin.command: which mbrelay
+  register: _mbrelay_bin
+  changed_when: false
+  # If this fails the unit template below has nothing to put in ExecStart, so
+  # stop here with a comprehensible message rather than writing a broken unit.
+  failed_when: _mbrelay_bin.rc != 0
+
+# ── Configure ─────────────────────────────────────────────
+- name: Deploy the mbrelay configuration
+  ansible.builtin.template:
+    src: mbrelay.toml.j2
+    dest: "{{ microbit_relay_config_dir }}/mbrelay.toml"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart mbrelay
+
+- name: Deploy the mbrelay systemd unit
+  ansible.builtin.template:
+    src: mbrelay.service.j2
+    dest: /etc/systemd/system/{{ microbit_relay_service_name }}.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart mbrelay
+
+- name: Enable and start mbrelay
+  ansible.builtin.systemd:
+    name: "{{ microbit_relay_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# ── Optional: the flashing toolchain ──────────────────────
+- name: Install the firmware flashing toolchain
+  when: microbit_relay_install_flasher
+  block:
+    - name: Install pipx
+      ansible.builtin.apt:
+        name: pipx
+        state: present
+
+    # pyocd and mbdeploy each pull a large dependency tree, and mbdeploy invokes
+    # pyocd as `sys.executable -m pyocd` -- so they must share one environment.
+    - name: Install mbdeploy with pyocd in the same pipx environment
+      ansible.builtin.shell: |
+        set -eo pipefail
+        export PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin
+        pipx install --force {{ microbit_relay_mbdeploy_spec | quote }}
+        pipx inject mbdeploy pyocd
+      args:
+        executable: /bin/bash
+      register: _mbrelay_pipx
+      changed_when: "'installed package' in _mbrelay_pipx.stdout
+                     or 'injected package' in _mbrelay_pipx.stdout"
+
+    # pyocd reads pyocd.yaml from its CURRENT WORKING DIRECTORY, and mbrelay
+    # runs it with cwd set here. Without chip_erase, pyocd sector-erases, which
+    # fails on the nRF52833's MBR region at 0x0 -- silently, as a flash that
+    # does not take.
+    - name: Deploy pyocd session options next to the firmware
+      ansible.builtin.copy:
+        dest: "{{ microbit_relay_dir }}/pyocd.yaml"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Ansible on {{ inventory_hostname }} — do not edit by hand.
+          # Force a full chip erase: a sector erase fails on the nRF52833's
+          # MBR/SoftDevice region at 0x0, which is what blocks `mbdeploy deploy`.
+          chip_erase: chip
+
+- name: Report the service state
+  ansible.builtin.command: "{{ _mbrelay_bin.stdout }} --socket /run/mbrelay/mbrelay.sock status"
+  register: _mbrelay_status
+  changed_when: false
+  failed_when: false
+
+- name: Show what the daemon can see
+  ansible.builtin.debug:
+    msg: "{{ _mbrelay_status.stdout_lines | default(['(daemon not answering yet)']) }}"
